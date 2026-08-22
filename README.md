@@ -72,6 +72,14 @@ When executed with `--generate-poc`, the engine outputs a submission-ready Markd
 go install github.com/gamesapeca/gha-oidc-auditor/cmd/gha-oidc@latest
 ```
 
+### Docker / GitHub Container Registry
+
+Run directly via OCI container image without needing Go installed locally:
+
+```bash
+docker run --rm -v $(pwd):/workspace ghcr.io/gamesapeca/gha-oidc-auditor:latest --path /workspace/.github/workflows
+```
+
 ### Build from Source
 
 ```bash
@@ -79,6 +87,7 @@ git clone https://github.com/gamesapeca/gha-oidc-auditor.git
 cd gha-oidc-auditor
 make build
 ```
+
 
 ## Usage
 
