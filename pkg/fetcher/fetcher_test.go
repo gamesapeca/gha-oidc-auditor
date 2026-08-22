@@ -120,6 +120,36 @@ func TestExecuteWithRetry_ContextCancelled(t *testing.T) {
 	}
 }
 
+func TestExecuteWithRetry_SecondaryRateLimitRetry(t *testing.T) {
+	ctx := context.Background()
+	callCount := 0
+
+	header := http.Header{}
+	header.Set("Retry-After", "1")
+
+	resp429 := &github.Response{
+		Response: &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     header,
+		},
+	}
+
+	val, err := fetcher.ExecuteWithRetry(ctx, func() (string, *github.Response, error) {
+		callCount++
+		if callCount == 1 {
+			return "", resp429, errors.New("secondary rate limit")
+		}
+		return "recovered", nil, nil
+	})
+
+	if err != nil {
+		t.Fatalf("expected recovery after secondary rate limit, got error: %v", err)
+	}
+	if val != "recovered" || callCount != 2 {
+		t.Errorf("expected 2 calls, got %d (val: %s)", callCount, val)
+	}
+}
+
 func TestExecuteWithRetry_NilEmbeddedHTTPResponse(t *testing.T) {
 	ctx := context.Background()
 
