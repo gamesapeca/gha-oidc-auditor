@@ -49,7 +49,7 @@ jobs:
           go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o dist/${{ matrix.output_name }} ./cmd/gha-oidc
 
       - name: Upload artifact for release step
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
           name: binary-${{ matrix.output_name }}
           path: dist/${{ matrix.output_name }}
@@ -58,12 +58,14 @@ jobs:
     name: Publish GitHub Release
     needs: build-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Download all built binaries
-        uses: actions/download-artifact@c850b08b15609bda87eaab11104b6a2c67382b7e # v4.1.4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           path: dist
           merge-multiple: true
@@ -75,9 +77,12 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
             dist/*
           generate_release_notes: true
           draft: false
           prerelease: false
+
