@@ -109,8 +109,11 @@ func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[
 	results := make(map[string][]*parser.Workflow)
 
 	opts := &github.RepositoryListByOrgOptions{
-		Type:        "all",
-		ListOptions: github.ListOptions{PerPage: 50},
+		Type: "all",
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 50,
+		},
 	}
 
 	for {
