@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,11 +38,16 @@ func (w *Workflow) UnmarshalYAML(value *yaml.Node) error {
 
 	switch raw.Permissions.Kind {
 	case yaml.ScalarNode:
-		w.PermissionsAll = raw.Permissions.Value
+		w.PermissionsAll = strings.ToLower(strings.TrimSpace(raw.Permissions.Value))
 	case yaml.MappingNode:
-		var m map[string]string
-		if err := raw.Permissions.Decode(&m); err == nil {
-			w.Permissions = m
+		var rawMap map[string]interface{}
+		if err := raw.Permissions.Decode(&rawMap); err == nil {
+			w.Permissions = make(map[string]string)
+			for k, v := range rawMap {
+				normK := strings.ToLower(strings.TrimSpace(k))
+				normV := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", v)))
+				w.Permissions[normK] = normV
+			}
 		}
 	}
 
@@ -58,12 +64,18 @@ type TriggerConfig struct {
 func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {
 	case yaml.ScalarNode:
-		tc.Events = []string{value.Value}
+		norm := strings.ToLower(strings.TrimSpace(value.Value))
+		if norm != "" {
+			tc.Events = []string{norm}
+		}
 		return nil
 
 	case yaml.SequenceNode:
 		for _, item := range value.Content {
-			tc.Events = append(tc.Events, item.Value)
+			norm := strings.ToLower(strings.TrimSpace(item.Value))
+			if norm != "" {
+				tc.Events = append(tc.Events, norm)
+			}
 		}
 		return nil
 
@@ -72,10 +84,13 @@ func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
 		if err := value.Decode(&m); err != nil {
 			return err
 		}
-		for k := range m {
-			tc.Events = append(tc.Events, k)
+		normConditions := make(map[string]interface{})
+		for k, v := range m {
+			normK := strings.ToLower(strings.TrimSpace(k))
+			tc.Events = append(tc.Events, normK)
+			normConditions[normK] = v
 		}
-		tc.Conditions = m
+		tc.Conditions = normConditions
 		return nil
 
 	default:
@@ -85,12 +100,12 @@ func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
 
 // Job represents a single job definition within a workflow.
 type Job struct {
-	Name           string                 `yaml:"name"`
-	Uses           string                 `yaml:"uses"`
-	Permissions    map[string]string      `yaml:"-"`
-	PermissionsAll string                 `yaml:"-"`
-	Environment    interface{}            `yaml:"environment"`
-	Steps          []Step                 `yaml:"steps"`
+	Name           string            `yaml:"name"`
+	Uses           string            `yaml:"uses"`
+	Permissions    map[string]string `yaml:"-"`
+	PermissionsAll string            `yaml:"-"`
+	Environment    interface{}       `yaml:"environment"`
+	Steps          []Step            `yaml:"steps"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler for Job.
@@ -115,11 +130,16 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 
 	switch raw.Permissions.Kind {
 	case yaml.ScalarNode:
-		j.PermissionsAll = raw.Permissions.Value
+		j.PermissionsAll = strings.ToLower(strings.TrimSpace(raw.Permissions.Value))
 	case yaml.MappingNode:
-		var m map[string]string
-		if err := raw.Permissions.Decode(&m); err == nil {
-			j.Permissions = m
+		var rawMap map[string]interface{}
+		if err := raw.Permissions.Decode(&rawMap); err == nil {
+			j.Permissions = make(map[string]string)
+			for k, v := range rawMap {
+				normK := strings.ToLower(strings.TrimSpace(k))
+				normV := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", v)))
+				j.Permissions[normK] = normV
+			}
 		}
 	}
 
@@ -133,10 +153,10 @@ func (j *Job) GetEnvironmentName() string {
 	}
 	switch v := j.Environment.(type) {
 	case string:
-		return v
+		return strings.TrimSpace(v)
 	case map[string]interface{}:
 		if name, ok := v["name"].(string); ok {
-			return name
+			return strings.TrimSpace(name)
 		}
 	}
 	return ""

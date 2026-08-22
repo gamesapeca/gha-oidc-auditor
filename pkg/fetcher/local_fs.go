@@ -10,6 +10,9 @@ import (
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
 
+// MaxWorkflowFileSize sets a defensive 10 MB limit per file to prevent memory exhaustion DoS attacks.
+const MaxWorkflowFileSize int64 = 10 * 1024 * 1024
+
 // ScanLocalPath traverses a target file or directory looking for GitHub Actions workflow files (.yml / .yaml) and parses them.
 func ScanLocalPath(targetPath string) ([]*parser.Workflow, error) {
 	info, err := os.Stat(targetPath)
@@ -22,6 +25,9 @@ func ScanLocalPath(targetPath string) ([]*parser.Workflow, error) {
 	// Single file target
 	if !info.IsDir() {
 		if strings.HasSuffix(targetPath, ".yml") || strings.HasSuffix(targetPath, ".yaml") {
+			if info.Size() > MaxWorkflowFileSize {
+				return nil, fmt.Errorf("file %s exceeds maximum permitted size of 10MB", targetPath)
+			}
 			wf, err := parser.ParseWorkflowFile(targetPath)
 			if err != nil {
 				return nil, err
@@ -41,9 +47,12 @@ func ScanLocalPath(targetPath string) ([]*parser.Workflow, error) {
 		}
 
 		if strings.HasSuffix(d.Name(), ".yml") || strings.HasSuffix(d.Name(), ".yaml") {
-			wf, err := parser.ParseWorkflowFile(path)
-			if err == nil && wf != nil {
-				workflows = append(workflows, wf)
+			fileInfo, err := d.Info()
+			if err == nil && fileInfo.Size() <= MaxWorkflowFileSize {
+				wf, err := parser.ParseWorkflowFile(path)
+				if err == nil && wf != nil {
+					workflows = append(workflows, wf)
+				}
 			}
 		}
 		return nil

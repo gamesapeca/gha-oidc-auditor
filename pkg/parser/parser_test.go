@@ -9,10 +9,10 @@ import (
 )
 
 func TestParseWorkflow_Triggers(t *testing.T) {
-	t.Run("Scalar Trigger", func(t *testing.T) {
+	t.Run("Scalar Trigger Case Insensitive", func(t *testing.T) {
 		yamlContent := `
 name: Scalar CI
-on: push
+on: PUSH
 jobs:
   build:
     steps:
@@ -23,14 +23,14 @@ jobs:
 			t.Fatalf("unexpected parse error: %v", err)
 		}
 		if len(wf.On.Events) != 1 || wf.On.Events[0] != "push" {
-			t.Fatalf("expected event ['push'], got: %v", wf.On.Events)
+			t.Fatalf("expected normalized event ['push'], got: %v", wf.On.Events)
 		}
 	})
 
-	t.Run("Sequence Trigger", func(t *testing.T) {
+	t.Run("Sequence Trigger Mixed Case", func(t *testing.T) {
 		yamlContent := `
 name: Sequence CI
-on: [push, pull_request_target, workflow_dispatch]
+on: [Push, Pull_Request_Target, WORKFLOW_DISPATCH]
 jobs:
   test:
     steps:
@@ -84,13 +84,13 @@ jobs:
 func TestParseWorkflow_PermissionsVariants(t *testing.T) {
 	yamlContent := `
 name: Permissions Matrix
-permissions: write-all
+permissions: WRITE-ALL
 jobs:
   inherit_global:
     steps:
       - run: echo 1
   override_read_all:
-    permissions: read-all
+    permissions: READ-ALL
     steps:
       - run: echo 2
   override_empty_map:
@@ -99,8 +99,8 @@ jobs:
       - run: echo 3
   override_granular:
     permissions:
-      id-token: write
-      contents: read
+      ID-TOKEN: WRITE
+      Contents: READ
       pull-requests: write
     steps:
       - run: echo 4
@@ -258,6 +258,48 @@ func TestExpressionEval_CaseInsensitivityAndVariants(t *testing.T) {
 			runBlock:   `echo "${{ GitHub.Event.Pull_Request.Head.Ref }}"`,
 			wantFound:  true,
 			wantTarget: "github.event.pull_request.head.ref",
+		},
+		{
+			name:       "Bracket index single quote evasion",
+			runBlock:   `echo "${{ github.event['issue']['title'] }}"`,
+			wantFound:  true,
+			wantTarget: "github.event.issue.title",
+		},
+		{
+			name:       "Bracket index double quote evasion",
+			runBlock:   `echo "${{ github['event']["pull_request"]["head"]["ref"] }}"`,
+			wantFound:  true,
+			wantTarget: "github.event.pull_request.head.ref",
+		},
+		{
+			name:       "Bracket index single property",
+			runBlock:   `echo "${{ github['head_ref'] }}"`,
+			wantFound:  true,
+			wantTarget: "github.head_ref",
+		},
+		{
+			name:       "Bracket and dot with spaces evasion",
+			runBlock:   `echo "${{ github . event [ 'comment' ] [ 'body' ] }}"`,
+			wantFound:  true,
+			wantTarget: "github.event.comment.body",
+		},
+		{
+			name:       "Client payload dispatch injection",
+			runBlock:   `echo "${{ github.event.client_payload.env }}"`,
+			wantFound:  true,
+			wantTarget: "github.event.client_payload",
+		},
+		{
+			name:       "Release body injection",
+			runBlock:   `echo "${{ github.event.release.body }}"`,
+			wantFound:  true,
+			wantTarget: "github.event.release.body",
+		},
+		{
+			name:       "Direct inputs reference",
+			runBlock:   `echo "${{ inputs.target_host }}"`,
+			wantFound:  true,
+			wantTarget: "inputs.",
 		},
 		{
 			name:       "Nested function call expression",

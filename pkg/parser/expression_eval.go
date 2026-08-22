@@ -36,11 +36,27 @@ var UntrustedContexts = []string{
 	"inputs.",
 }
 
-// ExprRegex matches any ${{ ... }} expression, including multiline expressions.
-var ExprRegex = regexp.MustCompile(`\$\{\{((?s:.)*?)\}\}`)
+var (
+	// ExprRegex matches any ${{ ... }} expression, including multiline expressions.
+	ExprRegex = regexp.MustCompile(`\$\{\{((?s:.)*?)\}\}`)
+
+	// bracketIndexRegex matches ['property'] or ["property"] index expressions
+	bracketIndexRegex = regexp.MustCompile(`\[\s*['"]([a-zA-Z0-9_\-]+)['"]\s*\]`)
+
+	// dotSpaceRegex normalizes spaces around dots (e.g. "github . event" -> "github.event")
+	dotSpaceRegex = regexp.MustCompile(`\s*\.\s*`)
+)
+
+// NormalizeExpression transforms expressions into canonical dot-notation for invariant matching.
+func NormalizeExpression(expr string) string {
+	normalized := strings.ToLower(expr)
+	normalized = bracketIndexRegex.ReplaceAllString(normalized, ".$1")
+	normalized = dotSpaceRegex.ReplaceAllString(normalized, ".")
+	return normalized
+}
 
 // ContainsUntrustedContext checks whether a shell run block contains inline untrusted context interpolation.
-// Handles case-insensitive expressions and nested functions (e.g. format, toJSON).
+// Handles case-insensitive expressions, bracket indexing, and nested functions (e.g. format, toJSON).
 func ContainsUntrustedContext(runBlock string) (bool, string) {
 	if runBlock == "" {
 		return false, ""
@@ -49,7 +65,7 @@ func ContainsUntrustedContext(runBlock string) (bool, string) {
 	matches := ExprRegex.FindAllStringSubmatch(runBlock, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			normalized := strings.ToLower(strings.TrimSpace(match[1]))
+			normalized := NormalizeExpression(match[1])
 			for _, untrusted := range UntrustedContexts {
 				if strings.Contains(normalized, untrusted) {
 					return true, untrusted
