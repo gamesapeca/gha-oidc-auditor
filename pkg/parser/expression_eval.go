@@ -7,31 +7,55 @@ import (
 
 // UntrustedContexts lists GitHub Actions context variables that carry untrusted, externally-controlled input.
 // Direct inline interpolation of these expressions in 'run:' steps allows command injection / RCE.
+// Updated with research findings from 2025-2026 security publications.
 var UntrustedContexts = []string{
+	// Issue and discussion events
 	"github.event.issue.title",
 	"github.event.issue.body",
 	"github.event.discussion.title",
 	"github.event.discussion.body",
+	"github.event.discussion_comment.body",
+	// Pull request metadata
 	"github.event.pull_request.title",
 	"github.event.pull_request.body",
 	"github.event.pull_request.head.ref",
 	"github.event.pull_request.head.label",
 	"github.event.pull_request.head.repo.default_branch",
 	"github.event.pull_request.head.repo.full_name",
+	"github.event.pull_request.head.repo.name",
+	// Comment and review bodies
 	"github.event.comment.body",
 	"github.event.review.body",
 	"github.event.review_comment.body",
+	// Release metadata — can be set by anyone with release permissions
 	"github.event.release.body",
 	"github.event.release.name",
+	"github.event.release.tag_name",
+	// Dispatch and webhook payloads
 	"github.event.client_payload",
 	"github.event.pages",
+	// Commit data — can be forged in unsigned commits
 	"github.event.commits",
 	"github.event.head_commit.message",
 	"github.event.head_commit.author.email",
 	"github.event.head_commit.author.name",
+	"github.event.head_commit.committer.email",
+	"github.event.head_commit.committer.name",
+	// workflow_run: head branch/commit from the triggering upstream workflow (untrusted fork)
 	"github.event.workflow_run.head_branch",
 	"github.event.workflow_run.head_commit.message",
+	"github.event.workflow_run.head_commit.author.name",
+	"github.event.workflow_run.head_commit.author.email",
+	"github.event.workflow_run.head_sha",
+	// Sender/actor — account login can be arbitrary
+	"github.event.sender.login",
+	// merge_group trigger (new in 2023, attack surface confirmed 2025)
+	"github.event.merge_group.head_ref",
+	"github.event.merge_group.base_ref",
+	// github.head_ref and triggering_actor — can be attacker-controlled
 	"github.head_ref",
+	"github.triggering_actor",
+	// Workflow dispatch/call inputs
 	"github.event.inputs.",
 	"inputs.",
 }

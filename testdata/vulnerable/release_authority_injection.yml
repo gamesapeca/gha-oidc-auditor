@@ -1,0 +1,25 @@
+name: Release Authority Compromise via Tag Push
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/publish-role
+          aws-region: us-east-1
+      - run: |
+          echo "Deploying version ${{ github.event.release.name }}"
+          npm publish

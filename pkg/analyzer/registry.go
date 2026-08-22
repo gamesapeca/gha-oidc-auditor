@@ -50,7 +50,9 @@ func NewDefaultRegistry() *Registry {
 		&RuleOIDC009TagHijackRisk{},
 		&RuleOIDC010ImmutableSubClaim{},
 		&RuleOIDC011SecretLogExfiltration{},
+		&RuleOIDC012WildcardTrustPolicy{},
 	)
 }
+
 
 

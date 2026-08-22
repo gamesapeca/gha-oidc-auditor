@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build & Release Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output_name: gha-oidc-linux-amd64
+          - goos: linux
+            goarch: arm64
+            output_name: gha-oidc-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            output_name: gha-oidc-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            output_name: gha-oidc-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            output_name: gha-oidc-windows-amd64.exe
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o dist/${{ matrix.output_name }} ./cmd/gha-oidc
+
+      - name: Upload artifact for release step
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: binary-${{ matrix.output_name }}
+          path: dist/${{ matrix.output_name }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Download all built binaries
+        uses: actions/download-artifact@c850b08b15609bda87eaab11104b6a2c67382b7e # v4.1.4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: dist
+        run: |
+          sha256sum * > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

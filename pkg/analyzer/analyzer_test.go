@@ -987,3 +987,321 @@ jobs:
 		}
 	})
 }
+
+// TestOIDC012_WildcardTrustPolicy covers CWE-732: Incorrect Permission Assignment for Critical Resource.
+// Wildcard cloud trust policies (repo:org/*) allow any compromised repository to assume production roles.
+func TestOIDC012_WildcardTrustPolicy(t *testing.T) {
+	eng := analyzer.NewDefaultEngine()
+
+	t.Run("OIDC-012: Detects wildcard role-to-assume with /*", func(t *testing.T) {
+		wfYAML := `
+name: Wildcard IAM
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/*
+          aws-region: us-east-1
+`
+		wf, err := parser.ParseWorkflowBytes([]byte(wfYAML), "test.yml")
+		if err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		findings := eng.AnalyzeWorkflow(wf)
+		found := false
+		for _, f := range findings {
+			if f.RuleID == "OIDC-012" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("OIDC-012 not triggered for wildcard role-to-assume; findings: %+v", findings)
+		}
+	})
+
+	t.Run("OIDC-012: Does not false-positive on exact ARN", func(t *testing.T) {
+		wfYAML := `
+name: Exact IAM
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ExactProductionRole
+          aws-region: us-east-1
+`
+		wf, err := parser.ParseWorkflowBytes([]byte(wfYAML), "test.yml")
+		if err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		findings := eng.AnalyzeWorkflow(wf)
+		for _, f := range findings {
+			if f.RuleID == "OIDC-012" {
+				t.Errorf("OIDC-012 false positive on exact ARN: %+v", f)
+			}
+		}
+	})
+}
+
+// TestNewContextVectors_2025 validates detection of newly added untrusted context variables
+// discovered in 2025-2026 security research (merge_group, triggering_actor, committer, sender.login).
+func TestNewContextVectors_2025(t *testing.T) {
+	eng := analyzer.NewDefaultEngine()
+
+	tests := []struct {
+		name     string
+		wfYAML   string
+		wantRule string
+	}{
+		{
+			name: "CWE-78: merge_group.head_ref injected into run",
+			wfYAML: `
+name: Merge Group Injection
+on: merge_group
+jobs:
+  validate:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: git log "${{ github.event.merge_group.head_ref }}"
+`,
+			wantRule: "OIDC-004",
+		},
+		{
+			name: "CWE-78: triggering_actor injected into run",
+			wfYAML: `
+name: Actor Injection
+on: push
+jobs:
+  build:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Triggered by ${{ github.triggering_actor }}" | tee /tmp/log
+`,
+			wantRule: "OIDC-004",
+		},
+		{
+			name: "CWE-78: release.tag_name injected into run",
+			wfYAML: `
+name: Release Tag Injection
+on: release
+jobs:
+  publish:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm version ${{ github.event.release.tag_name }} --no-git-tag-version
+`,
+			wantRule: "OIDC-004",
+		},
+		{
+			name: "CWE-78: head_commit.committer.email injected into run",
+			wfYAML: `
+name: Committer Email Injection
+on: push
+jobs:
+  build:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: git config user.email "${{ github.event.head_commit.committer.email }}"
+`,
+			wantRule: "OIDC-004",
+		},
+		{
+			name: "CWE-78: workflow_run.head_sha injected into run",
+			wfYAML: `
+name: WorkflowRun SHA Injection
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+jobs:
+  downstream:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: git checkout ${{ github.event.workflow_run.head_sha }}
+`,
+			wantRule: "OIDC-004",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wf, err := parser.ParseWorkflowBytes([]byte(tt.wfYAML), "test.yml")
+			if err != nil {
+				t.Fatalf("parse error: %v", err)
+			}
+			findings := eng.AnalyzeWorkflow(wf)
+			found := false
+			for _, f := range findings {
+				if f.RuleID == tt.wantRule {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("rule %s not triggered; findings: %+v", tt.wantRule, findings)
+			}
+		})
+	}
+}
+
+// TestFalsePositiveRegression validates that common safe patterns do not generate findings.
+// This is the anti-regression suite ensuring noise reduction quality.
+func TestFalsePositiveRegression(t *testing.T) {
+	eng := analyzer.NewDefaultEngine()
+
+	safePatterns := []struct {
+		name   string
+		yaml   string
+		reason string
+	}{
+		{
+			name: "SHA-pinned actions in OIDC job with env: pattern for context isolation",
+			yaml: `
+name: Safe Deploy
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ExactRole
+          aws-region: us-east-1
+      - run: echo "Deploying"
+`,
+			reason: "env: isolates context from shell, run: step is safe",
+		},
+		{
+			name: "SLSA Generator action exempt from OIDC-003 pinning rule",
+			yaml: `
+name: SLSA Build
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+`,
+			reason: "SLSA framework actions are exempt from SHA pinning requirement",
+		},
+		{
+			name: "PRT with explicit environment approval gate should not trigger CHAIN",
+			yaml: `
+name: PRT Gated Deploy
+on: pull_request_target
+jobs:
+  deploy:
+    environment: production
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ProdRole
+          aws-region: us-east-1
+`,
+			reason: "environment approval gate prevents CHAIN-001 exploitation",
+		},
+		{
+			name: "Safe echo of static string with no context interpolation",
+			yaml: `
+name: Static Echo
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Build started at $(date)"
+`,
+			reason: "no secret or context interpolation in echo",
+		},
+	}
+
+	for _, sp := range safePatterns {
+		t.Run(sp.name, func(t *testing.T) {
+			wf, err := parser.ParseWorkflowBytes([]byte(sp.yaml), "safe_test.yml")
+			if err != nil {
+				t.Fatalf("parse error: %v", err)
+			}
+			findings := eng.AnalyzeWorkflow(wf)
+			for _, f := range findings {
+				if f.Severity == analyzer.SeverityCritical {
+					t.Errorf("False positive CRITICAL in safe pattern '%s' (reason: %s): %+v", sp.name, sp.reason, f)
+				}
+			}
+		})
+	}
+}
+
+// TestWorldRealFixtures runs the scanner against the new vulnerable fixtures
+// representing real-world attack patterns discovered in 2025-2026.
+func TestWorldRealFixtures_2025_2026(t *testing.T) {
+	eng := analyzer.NewDefaultEngine()
+
+	tests := []struct {
+		name         string
+		filePath     string
+		expectRuleID string
+	}{
+		{
+			name:         "Release Authority Injection (CWE-78) - release.name in run",
+			filePath:     "../../testdata/vulnerable/release_authority_injection.yml",
+			expectRuleID: "OIDC-004",
+		},
+		{
+			name:         "Merge Group Context Injection (CWE-78) - merge_group.head_ref in run",
+			filePath:     "../../testdata/vulnerable/merge_group_injection.yml",
+			expectRuleID: "OIDC-004",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wf, err := parser.ParseWorkflowFile(tt.filePath)
+			if err != nil {
+				t.Fatalf("failed to read fixture %s: %v", tt.filePath, err)
+			}
+			findings := eng.AnalyzeWorkflow(wf)
+			found := false
+			for _, f := range findings {
+				if f.RuleID == tt.expectRuleID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected rule %s not found in %s; findings: %+v", tt.expectRuleID, tt.filePath, findings)
+			}
+		})
+	}
+}
+

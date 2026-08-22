@@ -47,6 +47,11 @@ Adversaries exploit configuration flaws across 4 primary attack vectors:
 | `OIDC-006` | CRITICAL | Unfiltered `workflow_run` | `workflow_run` trigger without branch filters minting OIDC tokens. |
 | `OIDC-007` | HIGH | Self-Hosted Runner in OIDC Job | Non-ephemeral self-hosted runner executing privileged OIDC workflow. |
 | `OIDC-008` | HIGH | External `secrets: inherit` | OIDC-privileged job delegating all caller secrets to external/third-party reusable workflows. |
+| `OIDC-009` | HIGH | High-Value Action Mutable Tag (CVE-2025-30066 Class) | Detects high-value supply chain actions (e.g. `tj-actions`, `docker`, `aws-actions`) pinned by mutable tags anywhere in the workflow. |
+| `OIDC-010` | INFO | OIDC Sub-Claim Name-Squatting Risk (2026 Immutable Format) | Advisory finding detecting missing numeric organization and repository IDs (`repo:org@ID/repo@ID`) in subject claims following GitHub's July 2026 specification update. |
+| `OIDC-011` | CRITICAL / HIGH | Secret / OIDC Token Exfiltration to Workflow Logs | Detects shell execution patterns leaking secrets (`echo $ACTIONS_ID_TOKEN...`, `printenv`, `env -0`) or deprecated `::set-output::` syntax. |
+| `OIDC-012` | HIGH | Wildcard OIDC Trust Policy Detection | Identifies cloud authentication configurations using wildcard sub-claims (`repo:org/*`), exposing organization-wide blast radius. |
+
 
 ## Zero-Prerequisite Exploit Chains (Bug Bounty Mode)
 
