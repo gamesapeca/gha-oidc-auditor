@@ -234,6 +234,58 @@ jobs:
 	}
 }
 
+func TestJob_IsSelfHosted(t *testing.T) {
+	yamlContent := `
+name: Runners
+jobs:
+  scalar_hosted:
+    runs-on: ubuntu-latest
+    steps: [{ run: echo 1 }]
+  scalar_self:
+    runs-on: self-hosted
+    steps: [{ run: echo 2 }]
+  array_self:
+    runs-on: [self-hosted, linux, x64]
+    steps: [{ run: echo 3 }]
+  object_group_self:
+    runs-on:
+      group: self-hosted-runners
+      labels: [gpu]
+    steps: [{ run: echo 4 }]
+  object_labels_self:
+    runs-on:
+      group: company-runners
+      labels: [self-hosted, arm64]
+    steps: [{ run: echo 5 }]
+  hosted_array:
+    runs-on: [ubuntu-latest]
+    steps: [{ run: echo 6 }]
+`
+	wf, err := parser.ParseWorkflowBytes([]byte(yamlContent), "runners.yml")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	tests := []struct {
+		jobName    string
+		wantResult bool
+	}{
+		{"scalar_hosted", false},
+		{"scalar_self", true},
+		{"array_self", true},
+		{"object_group_self", true},
+		{"object_labels_self", true},
+		{"hosted_array", false},
+	}
+
+	for _, tt := range tests {
+		job := wf.Jobs[tt.jobName]
+		if job.IsSelfHosted() != tt.wantResult {
+			t.Errorf("job %s: IsSelfHosted() = %v, want %v", tt.jobName, job.IsSelfHosted(), tt.wantResult)
+		}
+	}
+}
+
 func TestExpressionEval_CaseInsensitivityAndVariants(t *testing.T) {
 	tests := []struct {
 		name       string

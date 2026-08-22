@@ -3,6 +3,7 @@ package remediation
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
@@ -37,9 +38,16 @@ func GenerateVaultJWTRole(owner, repo, roleName string, wf *parser.Workflow, job
 	} else if wf != nil && wf.On.Conditions != nil {
 		if pushCond, ok := wf.On.Conditions["push"].(map[string]interface{}); ok {
 			if branches, ok := pushCond["branches"].([]interface{}); ok && len(branches) > 0 {
-				boundClaims["ref"] = fmt.Sprintf("refs/heads/%v", branches[0])
+				rawBranch := fmt.Sprintf("%v", branches[0])
+				normBranch := strings.TrimPrefix(rawBranch, "refs/heads/")
+				boundClaims["ref"] = fmt.Sprintf("refs/heads/%s", normBranch)
 			}
 		}
+	}
+
+	// Safe fallback to main branch if neither environment nor branch was constrained
+	if boundClaims["environment"] == "" && boundClaims["ref"] == "" {
+		boundClaims["ref"] = "refs/heads/main"
 	}
 
 	role := vaultJWTRoleConfig{

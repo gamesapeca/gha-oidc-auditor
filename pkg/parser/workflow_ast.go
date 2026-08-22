@@ -182,6 +182,23 @@ func (j *Job) IsSelfHosted() bool {
 				}
 			}
 		}
+	case map[string]interface{}:
+		for _, val := range v {
+			if str, ok := val.(string); ok {
+				if strings.Contains(strings.ToLower(str), "self-hosted") {
+					return true
+				}
+			}
+			if list, ok := val.([]interface{}); ok {
+				for _, item := range list {
+					if str, ok := item.(string); ok {
+						if strings.Contains(strings.ToLower(str), "self-hosted") {
+							return true
+						}
+					}
+				}
+			}
+		}
 	}
 	return false
 }
