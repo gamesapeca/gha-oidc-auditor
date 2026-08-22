@@ -1,0 +1,12 @@
+name: Global OIDC Leak
+permissions: write-all
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Running untrusted test"
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Building"

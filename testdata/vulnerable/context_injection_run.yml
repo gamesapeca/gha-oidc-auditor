@@ -1,0 +1,18 @@
+name: Context Injection in OIDC Job
+on: push
+jobs:
+  notify_and_deploy:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - name: Injected Shell Step
+        run: |
+          echo "Title was: ${{ github.event.issue.title }}"
+          curl -X POST https://internal.example.com
+      - name: Deploy Step
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/DeployRole
+          aws-region: us-east-1

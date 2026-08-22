@@ -1,0 +1,17 @@
+name: Safe SHA Pinned OIDC
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: ./actions/internal-build
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ProductionRole
+          aws-region: us-east-1
