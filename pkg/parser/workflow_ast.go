@@ -128,7 +128,7 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 
 // GetEnvironmentName extracts the environment name whether specified as string or object map.
 func (j *Job) GetEnvironmentName() string {
-	if j.Environment == nil {
+	if j == nil || j.Environment == nil {
 		return ""
 	}
 	switch v := j.Environment.(type) {
@@ -153,7 +153,7 @@ type Step struct {
 
 // GetWithString safely returns the string representation of a parameter from 'with'.
 func (s *Step) GetWithString(key string) string {
-	if s.With == nil {
+	if s == nil || s.With == nil {
 		return ""
 	}
 	val, ok := s.With[key]
@@ -165,7 +165,7 @@ func (s *Step) GetWithString(key string) string {
 
 // GetEnvString safely returns the string representation of an environment variable from 'env'.
 func (s *Step) GetEnvString(key string) string {
-	if s.Env == nil {
+	if s == nil || s.Env == nil {
 		return ""
 	}
 	val, ok := s.Env[key]

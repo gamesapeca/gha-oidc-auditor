@@ -34,7 +34,7 @@ var UntrustedContexts = []string{
 var ExprRegex = regexp.MustCompile(`\$\{\{((?s:.)*?)\}\}`)
 
 // ContainsUntrustedContext checks whether a shell run block contains inline untrusted context interpolation.
-// Returns true and the identified untrusted context variable if detected.
+// Handles case-insensitive expressions and nested functions (e.g. format, toJSON).
 func ContainsUntrustedContext(runBlock string) (bool, string) {
 	if runBlock == "" {
 		return false, ""
@@ -43,9 +43,9 @@ func ContainsUntrustedContext(runBlock string) (bool, string) {
 	matches := ExprRegex.FindAllStringSubmatch(runBlock, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			content := strings.TrimSpace(match[1])
+			normalized := strings.ToLower(strings.TrimSpace(match[1]))
 			for _, untrusted := range UntrustedContexts {
-				if strings.Contains(content, untrusted) {
+				if strings.Contains(normalized, untrusted) {
 					return true, untrusted
 				}
 			}
