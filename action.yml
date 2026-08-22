@@ -1,0 +1,48 @@
+name: 'GHA OIDC Security Auditor'
+description: 'Static security analyzer, least-privilege cloud trust policy generator, and exploit chain synthesizer for GitHub Actions OIDC.'
+author: 'gamesapeca'
+
+inputs:
+  path:
+    description: 'Path to workflow files or directory'
+    required: false
+    default: '.github/workflows'
+  fail-on:
+    description: 'Severity threshold for non-zero exit code (critical, high, medium, all, none)'
+    required: false
+    default: 'critical'
+  format:
+    description: 'Output format (console, json, markdown, hcl)'
+    required: false
+    default: 'console'
+  generate-policies:
+    description: 'Synthesize least-privilege cloud trust policies for audited workflows'
+    required: false
+    default: 'false'
+  generate-hcl:
+    description: 'Synthesize Remediation-as-Code Terraform/OpenTofu HCL modules'
+    required: false
+    default: 'false'
+  bounty-mode:
+    description: 'Filter report to display only exploitable zero-prerequisite attack chains'
+    required: false
+    default: 'false'
+  output:
+    description: 'Output file path to save audit results'
+    required: false
+    default: ''
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - '--path'
+    - ${{ inputs.path }}
+    - '--fail-on'
+    - ${{ inputs.fail-on }}
+    - '--format'
+    - ${{ inputs.format }}
+
+branding:
+  icon: 'shield'
+  color: 'blue'

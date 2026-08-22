@@ -416,4 +416,116 @@ func TestValidateAWSTrustPolicyJSON(t *testing.T) {
 	})
 }
 
+func TestGenerateTerraformHCL_AWSAndGCP(t *testing.T) {
+	yamlContent := `
+name: CD Pipeline
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    environment: production
+    steps:
+      - run: echo deploy
+`
+	wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "cd.yml")
+	job := wf.Jobs["deploy"]
+
+	t.Run("AWS Terraform HCL Generation", func(t *testing.T) {
+		hcl := remediation.GenerateAWSTerraformHCL("112233445566", "gamesapeca", "my-service", wf, &job)
+		if !strings.Contains(hcl, "data \"aws_iam_policy_document\"") {
+			t.Errorf("missing policy document in HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "resource \"aws_iam_role\"") {
+			t.Errorf("missing role resource in HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "repo:gamesapeca/my-service:environment:production") {
+			t.Errorf("missing environment claim in HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "repo:gamesapeca@*/my-service@*:environment:production") {
+			t.Errorf("missing 2026 immutable claim in HCL: %s", hcl)
+		}
+	})
+
+	t.Run("GCP WIF Terraform HCL Generation", func(t *testing.T) {
+		hcl := remediation.GenerateGCPTerraformHCL("projects/123/locations/global/workloadIdentityPools/gha-pool", "gamesapeca", "my-service", wf, &job)
+		if !strings.Contains(hcl, "resource \"google_iam_workload_identity_pool_provider\"") {
+			t.Errorf("missing WIF provider in HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "assertion.environment == 'production'") {
+			t.Errorf("missing environment assertion in HCL: %s", hcl)
+		}
+	})
+
+	t.Run("Azure Federated Credential Terraform HCL Generation", func(t *testing.T) {
+		hcl := remediation.GenerateAzureTerraformHCL("00000000-0000-0000-0000-000000000000", "gamesapeca", "my-service", wf, &job)
+		if !strings.Contains(hcl, "resource \"azuread_application_federated_identity_credential\"") {
+			t.Errorf("missing Azure federated credential resource in HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "api://AzureADTokenExchange") {
+			t.Errorf("missing audience in Azure HCL: %s", hcl)
+		}
+		if !strings.Contains(hcl, "repo:gamesapeca/my-service:environment:production") {
+			t.Errorf("missing subject claim in Azure HCL: %s", hcl)
+		}
+	})
+}
+
+func TestValidateGCPAndAzureTrustConfigs(t *testing.T) {
+	t.Run("Valid GCP WIF config", func(t *testing.T) {
+		wifJSON := `{
+  "attributeMapping": {
+    "google.subject": "assertion.sub",
+    "attribute.repository": "assertion.repository",
+    "attribute.repository_id": "assertion.repository_id"
+  },
+  "attributeCondition": "assertion.repository == 'my-org/my-repo'",
+  "oidc": {
+    "issuerUri": "https://token.actions.githubusercontent.com"
+  }
+}`
+		res, err := remediation.ValidateGCPWIFConfigJSON(wifJSON, "my-org", "my-repo")
+		if err != nil {
+			t.Fatalf("GCP WIF verification failed: %v", err)
+		}
+		if !res.Valid {
+			t.Errorf("expected valid GCP WIF config, got warnings: %+v", res.Warnings)
+		}
+	})
+
+	t.Run("Valid Azure Federated Credential manifest", func(t *testing.T) {
+		fedJSON := `{
+  "name": "gha-federated-cred",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:my-org/my-repo:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}`
+		res, err := remediation.ValidateAzureFederationJSON(fedJSON, "my-org", "my-repo")
+		if err != nil {
+			t.Fatalf("Azure Federation verification failed: %v", err)
+		}
+		if !res.Valid {
+			t.Errorf("expected valid Azure manifest, got warnings: %+v", res.Warnings)
+		}
+	})
+
+	t.Run("Invalid Wildcard Azure Subject", func(t *testing.T) {
+		fedJSON := `{
+  "name": "gha-wildcard",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "*",
+  "audiences": ["api://AzureADTokenExchange"]
+}`
+		res, err := remediation.ValidateAzureFederationJSON(fedJSON, "my-org", "my-repo")
+		if err != nil {
+			t.Fatalf("Azure Federation verification failed: %v", err)
+		}
+		if res.Valid {
+			t.Errorf("expected wildcard Azure subject to be invalid")
+		}
+	})
+}
+
+
+
 
