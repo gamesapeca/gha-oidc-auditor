@@ -8,7 +8,7 @@ import (
 
 const (
 	ExitOK            = 0 // No findings or findings below configured threshold
-	ExitFindingsFound = 1 // Findings matching failure threshold detected
+	ExitFindingsFound = 1 // Findings matching failure threshold detected (HIGH / MEDIUM / LOW)
 	ExitCriticalFound = 2 // One or more CRITICAL findings detected
 	ExitParseError    = 3 // Workflow parsing or syntax failure
 	ExitAPIError      = 4 // GitHub API communication or authentication error
@@ -26,25 +26,38 @@ func DetermineExitCode(report *analyzer.AuditReport, failOn string) int {
 	switch normalized {
 	case "none":
 		return ExitOK
+
 	case "critical":
 		if report.Summary[analyzer.SeverityCritical] > 0 {
 			return ExitCriticalFound
 		}
 		return ExitOK
+
 	case "high":
-		if report.Summary[analyzer.SeverityCritical] > 0 || report.Summary[analyzer.SeverityHigh] > 0 {
+		if report.Summary[analyzer.SeverityCritical] > 0 {
+			return ExitCriticalFound
+		}
+		if report.Summary[analyzer.SeverityHigh] > 0 {
 			return ExitFindingsFound
 		}
 		return ExitOK
+
 	case "medium":
-		if report.Summary[analyzer.SeverityCritical] > 0 || report.Summary[analyzer.SeverityHigh] > 0 || report.Summary[analyzer.SeverityMedium] > 0 {
+		if report.Summary[analyzer.SeverityCritical] > 0 {
+			return ExitCriticalFound
+		}
+		if report.Summary[analyzer.SeverityHigh] > 0 || report.Summary[analyzer.SeverityMedium] > 0 {
 			return ExitFindingsFound
 		}
 		return ExitOK
+
 	case "all":
+		if report.Summary[analyzer.SeverityCritical] > 0 {
+			return ExitCriticalFound
+		}
 		return ExitFindingsFound
+
 	default:
-		// Default: fail on critical
 		if report.Summary[analyzer.SeverityCritical] > 0 {
 			return ExitCriticalFound
 		}
