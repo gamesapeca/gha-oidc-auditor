@@ -1,11 +1,14 @@
 package analyzer_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/analyzer"
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
+
 
 func TestPrecedence_ResolutionMatrix(t *testing.T) {
 	tests := []struct {
@@ -1304,4 +1307,356 @@ func TestWorldRealFixtures_2025_2026(t *testing.T) {
 		})
 	}
 }
+
+// TestAppSec_ComprehensiveCWEMatrix provides comprehensive verification of all supported CWE categories:
+// CWE-78, CWE-94, CWE-200, CWE-250, CWE-269, CWE-284, CWE-345, CWE-494, CWE-522, CWE-732, CWE-829.
+func TestAppSec_ComprehensiveCWEMatrix(t *testing.T) {
+	eng := analyzer.NewDefaultEngine()
+
+	cweTests := []struct {
+		cwe         string
+		name        string
+		workflowYAML string
+		expectedRule string
+	}{
+		{
+			cwe:  "CWE-78",
+			name: "OS Command Injection via issue comment body in run step",
+			workflowYAML: `
+name: CWE-78
+on: issue_comment
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "${{ github.event.comment.body }}"
+`,
+			expectedRule: "OIDC-004",
+		},
+		{
+			cwe:  "CWE-269",
+			name: "Code Injection via pull_request_target with fork checkout",
+			workflowYAML: `
+name: CWE-269
+on: pull_request_target
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: npm test
+`,
+			expectedRule: "OIDC-002",
+		},
+		{
+			cwe:  "CWE-200",
+			name: "Exposure of Sensitive Information via multi-cloud authentication in single job",
+			workflowYAML: `
+name: CWE-200
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/RoleA
+          aws-region: us-east-1
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/123/locations/global/workloadIdentityPools/p/providers/pr
+          service_account: sa@proj.iam.gserviceaccount.com
+`,
+			expectedRule: "OIDC-005",
+		},
+		{
+			cwe:  "CWE-250",
+			name: "Execution with Unnecessary Privileges via Global id-token: write",
+			workflowYAML: `
+name: CWE-250
+on: pull_request
+permissions:
+  id-token: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: go test ./...
+`,
+			expectedRule: "OIDC-001",
+		},
+		{
+			cwe:  "CWE-269",
+			name: "Improper Privilege Management via ungated PRT with id-token write",
+			workflowYAML: `
+name: CWE-269
+on: pull_request_target
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "deploy"
+`,
+			expectedRule: "OIDC-002",
+		},
+		{
+			cwe:  "CWE-284",
+			name: "Improper Access Control via public trigger on self-hosted runner",
+			workflowYAML: `
+name: CWE-284
+on: issues
+jobs:
+  triage:
+    runs-on: [self-hosted, linux]
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "triage"
+`,
+			expectedRule: "OIDC-007",
+		},
+		{
+			cwe:  "CWE-345",
+			name: "Insufficient Verification of Data Authenticity via missing immutable numeric ID in 2026 sub claims",
+			workflowYAML: `
+name: CWE-345
+on: pull_request
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/DeployRole
+          aws-region: us-east-1
+`,
+			expectedRule: "OIDC-010",
+		},
+		{
+			cwe:  "CWE-494",
+			name: "Download of Code Without Integrity Check via mutable tag on high-value action",
+			workflowYAML: `
+name: CWE-494
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: tj-actions/changed-files@v45
+`,
+			expectedRule: "OIDC-009",
+		},
+		{
+			cwe:  "CWE-532",
+			name: "Insufficiently Protected Credentials via secret/token log dumping",
+			workflowYAML: `
+name: CWE-532
+on: push
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+`,
+			expectedRule: "OIDC-011",
+		},
+		{
+			cwe:  "CWE-732",
+			name: "Incorrect Permission Assignment for Critical Resource via wildcard trust policy role ARN",
+			workflowYAML: `
+name: CWE-732
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/*
+          aws-region: us-east-1
+`,
+			expectedRule: "OIDC-012",
+		},
+		{
+			cwe:  "CWE-829",
+			name: "Inclusion of Functionality from Untrusted Control Sphere via mutable tag in OIDC job",
+			workflowYAML: `
+name: CWE-829
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: some-third-party/custom-action@v1.2.3
+`,
+			expectedRule: "OIDC-003",
+		},
+	}
+
+	for _, tt := range cweTests {
+		t.Run(fmt.Sprintf("%s_%s", tt.cwe, tt.name), func(t *testing.T) {
+			wf, err := parser.ParseWorkflowBytes([]byte(tt.workflowYAML), "test.yml")
+			if err != nil {
+				t.Fatalf("parse error for %s: %v", tt.name, err)
+			}
+			findings := eng.AnalyzeWorkflow(wf)
+			found := false
+			for _, f := range findings {
+				if f.RuleID == tt.expectedRule {
+					found = true
+					if f.CWE != tt.cwe {
+						t.Errorf("expected CWE %s for rule %s, got %s", tt.cwe, tt.expectedRule, f.CWE)
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected rule %s (CWE %s) not triggered for %s; findings: %+v", tt.expectedRule, tt.cwe, tt.name, findings)
+			}
+		})
+	}
+}
+
+// TestBugBounty_PoCExfiltrationAccuracy validates that the exploit chain engine
+// correctly tailors cloud credential exfiltration payloads for AWS, GCP, Azure, and Vault.
+func TestBugBounty_PoCExfiltrationAccuracy(t *testing.T) {
+	cloudPayloadTests := []struct {
+		provider     string
+		workflowYAML string
+		expectedText string
+	}{
+		{
+			provider: "AWS",
+			workflowYAML: `
+name: AWS Pwn
+on: pull_request_target
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/DeployRole
+          aws-region: us-east-1
+      - run: npm test
+`,
+			expectedText: "aws sts assume-role-with-web-identity",
+		},
+		{
+			provider: "GCP",
+			workflowYAML: `
+name: GCP Pwn
+on: pull_request_target
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/123/locations/global/workloadIdentityPools/pool/providers/prov
+          service_account: deploy@proj.iam.gserviceaccount.com
+      - run: npm test
+`,
+			expectedText: "https://iam.googleapis.com",
+		},
+		{
+			provider: "Azure",
+			workflowYAML: `
+name: Azure Pwn
+on: pull_request_target
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: azure/login@v2
+        with:
+          client-id: 00000000-0000-0000-0000-000000000000
+          tenant-id: 11111111-1111-1111-1111-111111111111
+      - run: npm test
+`,
+			expectedText: "api://AzureADTokenExchange",
+		},
+		{
+			provider: "Vault",
+			workflowYAML: `
+name: Vault Pwn
+on: pull_request_target
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.example.com
+          role: prod-role
+      - run: npm test
+`,
+			expectedText: "audience=vault",
+		},
+	}
+
+
+	for _, tt := range cloudPayloadTests {
+		t.Run(fmt.Sprintf("PoC_Payload_%s", tt.provider), func(t *testing.T) {
+			wf, err := parser.ParseWorkflowBytes([]byte(tt.workflowYAML), "test.yml")
+			if err != nil {
+				t.Fatalf("failed to parse: %v", err)
+			}
+			chains := analyzer.DetectExploitChains(wf)
+			if len(chains) == 0 {
+				t.Fatalf("expected exploit chain for %s, got 0", tt.provider)
+			}
+			foundPayload := false
+			for _, c := range chains {
+				if strings.Contains(c.PoCPayload, tt.expectedText) || strings.Contains(c.ReportTemplate, tt.expectedText) {
+					foundPayload = true
+					break
+				}
+			}
+			if !foundPayload {
+				t.Errorf("expected PoC to contain '%s' for provider %s; actual PoCPayload: %s", tt.expectedText, tt.provider, chains[0].PoCPayload)
+			}
+		})
+	}
+}
+
+
 
