@@ -30,14 +30,16 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "gha-oidc",
-		Short: "Security static analyzer & least-privilege cloud trust policy generator for GitHub Actions OIDC",
+		Use:     "gha-oidc",
+		Version: "1.0.0",
+		Short:   "Security static analyzer & least-privilege cloud trust policy generator for GitHub Actions OIDC",
 		Long: `gha-oidc-auditor is a static security analysis tool for GitHub Actions workflows.
 It detects supply-chain and privilege escalation risks in ephemeral OIDC token lifecycles (id-token: write),
 vulnerable execution triggers (pull_request_target, workflow_run), and synthesizes minimal-privilege
 Cloud Trust Policies for AWS, GCP, and Azure.`,
 		RunE: runAudit,
 	}
+
 
 	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "Local path to workflow file or directory (.github/workflows)")
 	rootCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "Remote repository in owner/repo format (e.g. gamesapeca/gha-oidc-auditor)")
