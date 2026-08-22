@@ -211,11 +211,20 @@ func (j *Job) IsSelfHosted() bool {
 
 // Step represents a sequential step execution within a Job.
 type Step struct {
-	Name string                 `yaml:"name"`
-	Uses string                 `yaml:"uses"`
-	Run  string                 `yaml:"run"`
-	With map[string]interface{} `yaml:"with"`
-	Env  map[string]interface{} `yaml:"env"`
+	Name  string                 `yaml:"name"`
+	Uses  string                 `yaml:"uses"`
+	Run   string                 `yaml:"run"`
+	Shell string                 `yaml:"shell"`
+	With  map[string]interface{} `yaml:"with"`
+	Env   map[string]interface{} `yaml:"env"`
+}
+
+// GetShell returns the execution shell for the step or 'bash' by default.
+func (s *Step) GetShell() string {
+	if s == nil || strings.TrimSpace(s.Shell) == "" {
+		return "bash"
+	}
+	return strings.TrimSpace(s.Shell)
 }
 
 // GetWithString safely returns the string representation of a parameter from 'with'.

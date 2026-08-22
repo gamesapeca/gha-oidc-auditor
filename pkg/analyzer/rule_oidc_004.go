@@ -42,21 +42,29 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 					var title string
 					var desc string
 
+					category := "Command Injection"
+					cwe := "CWE-78"
+					normShell := strings.ToLower(strings.TrimSpace(step.Shell))
+					if strings.Contains(normShell, "python") || strings.Contains(normShell, "node") || strings.Contains(normShell, "ruby") || strings.Contains(normShell, "perl") {
+						category = "Code Injection"
+						cwe = "CWE-94"
+					}
+
 					if isExternal {
 						severity = SeverityCritical
-						title = fmt.Sprintf("CRITICAL: Context Injection via '%s' in OIDC Job '%s'", contextVar, jobName)
-						desc = fmt.Sprintf("Step #%d interpolates externally-controllable context variable '%s' directly into a shell command in an OIDC-privileged job. Attackers can achieve Remote Code Execution and exfiltrate runner OIDC credentials.", idx+1, contextVar)
+						title = fmt.Sprintf("CRITICAL: %s via '%s' in OIDC Job '%s'", category, contextVar, jobName)
+						desc = fmt.Sprintf("Step #%d (shell: %s) interpolates externally-controllable context variable '%s' directly into a script command in an OIDC-privileged job. Attackers can achieve arbitrary code execution and exfiltrate runner OIDC credentials.", idx+1, step.GetShell(), contextVar)
 					} else {
 						severity = SeverityMedium
 						title = fmt.Sprintf("Input Parameter Interpolation via '%s' in OIDC Job '%s'", contextVar, jobName)
-						desc = fmt.Sprintf("Step #%d interpolates input parameter '%s' directly into a shell command in an OIDC-privileged job. Direct interpolation into shell script bodies is an antipattern vulnerable to command injection if callers pass unsanitized arguments.", idx+1, contextVar)
+						desc = fmt.Sprintf("Step #%d (shell: %s) interpolates input parameter '%s' directly into a script command in an OIDC-privileged job. Direct interpolation into script bodies is an antipattern vulnerable to injection if callers pass unsanitized arguments.", idx+1, step.GetShell(), contextVar)
 					}
 
 					findings = append(findings, Finding{
 						RuleID:       r.ID(),
 						Title:        title,
-						Category:     "Command Injection",
-						CWE:          "CWE-78",
+						Category:     category,
+						CWE:          cwe,
 						Severity:     severity,
 						WorkflowPath: wf.Path,
 						JobName:      jobName,
