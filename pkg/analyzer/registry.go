@@ -45,5 +45,6 @@ func NewDefaultRegistry() *Registry {
 		&RuleOIDC004ContextInjection{},
 		&RuleOIDC005MultiCloudScope{},
 		&RuleOIDC006TriggerWorkflowRun{},
+		&RuleOIDC007SelfHosted{},
 	)
 }

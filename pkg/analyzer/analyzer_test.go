@@ -329,6 +329,51 @@ jobs:
 			}
 		}
 	})
+
+	t.Run("OIDC-007 Self-Hosted Runner in OIDC Privileged Job", func(t *testing.T) {
+		// Privileged job with self-hosted runner -> triggers OIDC-007
+		vulnYaml := `
+name: Self Hosted Deploy
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, production]
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+`
+		wfVuln, _ := parser.ParseWorkflowBytes([]byte(vulnYaml), "self_hosted.yml")
+		findingsVuln := engine.AnalyzeWorkflow(wfVuln)
+		has007 := false
+		for _, f := range findingsVuln {
+			if f.RuleID == "OIDC-007" {
+				has007 = true
+				break
+			}
+		}
+		if !has007 {
+			t.Errorf("expected OIDC-007 finding for self-hosted runner in OIDC job")
+		}
+
+		// Privileged job on ubuntu-latest -> safe from OIDC-007
+		safeYaml := `
+name: Hosted Deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+`
+		wfSafe, _ := parser.ParseWorkflowBytes([]byte(safeYaml), "hosted.yml")
+		findingsSafe := engine.AnalyzeWorkflow(wfSafe)
+		for _, f := range findingsSafe {
+			if f.RuleID == "OIDC-007" {
+				t.Errorf("unexpected OIDC-007 for ubuntu-latest hosted runner")
+			}
+		}
+	})
 }
 
 func TestEngine_VulnerableAndSafeFixtures(t *testing.T) {

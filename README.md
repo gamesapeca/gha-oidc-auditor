@@ -19,7 +19,7 @@ However, adopting OIDC shifts the security perimeter from credential storage to 
 
 `gha-oidc-auditor` was created to solve these challenges by providing:
 1. **Deterministic Static Analysis**: Deep AST parsing of GitHub Actions workflows to identify OIDC privilege leaks, injection sinks, and insecure trigger combinations before they reach production.
-2. **Automated Least-Privilege Policy Synthesis**: Mathematical generation of strict Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, and Azure Entra ID scoped strictly to verified branches and environment approval gates.
+2. **Automated Least-Privilege Policy Synthesis**: Mathematical generation of strict Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, Azure Entra ID, HashiCorp Vault JWT, and Kubernetes ServiceAccounts scoped strictly to verified branches and environment approval gates.
 
 ## Threat Model
 
@@ -31,6 +31,7 @@ Vulnerabilities in workflow configuration or dependency management allow adversa
 2. **Action Poisoning in Privileged Jobs**: Unpinned actions (using tags like `@v4` or `@main`) in jobs with `id-token: write` can be backdoored upstream to read `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` from runner memory.
 3. **Context Injection to Token Exfiltration**: Untrusted context expressions (`${{ github.event.issue.title }}`) interpolated into `run:` scripts allow arbitrary command execution before or during cloud authentication.
 4. **Overprivileged Cloud Trust Policies**: Wildcard claims (`repo:org/*`) in cloud trust policies allow any repository in an organization to assume production roles.
+5. **Persistent State in Self-Hosted Runners**: Privileged OIDC jobs executing on self-hosted runners leave residual file state and session tokens accessible to subsequent unprivileged jobs.
 
 ## Rules Catalog
 
@@ -42,6 +43,7 @@ Vulnerabilities in workflow configuration or dependency management allow adversa
 | `OIDC-004` | CRITICAL | Context Injection in OIDC Step | Untrusted `${{ github.event.* }}` expressions evaluated in shell steps in OIDC jobs. |
 | `OIDC-005` | MEDIUM | Multi-Cloud Ambiguity | Multiple cloud provider authentications combined in a single unsegmented job. |
 | `OIDC-006` | CRITICAL | Unfiltered `workflow_run` | `workflow_run` trigger without branch filters minting OIDC tokens. |
+| `OIDC-007` | HIGH | Self-Hosted Runner in OIDC Job | Non-ephemeral self-hosted runner executing privileged OIDC workflow. |
 
 ## Installation
 

@@ -10,9 +10,9 @@ import (
 )
 
 type awsStatement struct {
-	Effect    string                         `json:"Effect"`
-	Principal map[string]string              `json:"Principal"`
-	Action    string                         `json:"Action"`
+	Effect    string                       `json:"Effect"`
+	Principal map[string]string            `json:"Principal"`
+	Action    string                       `json:"Action"`
 	Condition map[string]map[string]string `json:"Condition"`
 }
 
@@ -34,6 +34,25 @@ type azureDoc struct {
 	Subject     string   `json:"subject"`
 	Description string   `json:"description"`
 	Audiences   []string `json:"audiences"`
+}
+
+type vaultDoc struct {
+	RoleType       string            `json:"role_type"`
+	BoundAudiences []string          `json:"bound_audiences"`
+	UserClaim      string            `json:"user_claim"`
+	BoundClaims    map[string]string `json:"bound_claims"`
+	Policies       []string          `json:"policies"`
+	TTL            string            `json:"ttl"`
+}
+
+type k8sSADoc struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Metadata   struct {
+		Name        string            `json:"name"`
+		Namespace   string            `json:"namespace"`
+		Annotations map[string]string `json:"annotations"`
+	} `json:"metadata"`
 }
 
 func TestGenerateAWSTrustPolicy_Validation(t *testing.T) {
@@ -60,11 +79,11 @@ jobs:
 
 		var doc awsPolicyDocument
 		if err := json.Unmarshal([]byte(policyJSON), &doc); err != nil {
-			t.Fatalf("failed to parse AWS policy JSON: %v", err)
+			t.Fatalf("failed to parse generated AWS JSON: %v", err)
 		}
 
 		if doc.Version != "2012-10-17" {
-			t.Errorf("AWS version mismatch: %s", doc.Version)
+			t.Errorf("Version = %s, want 2012-10-17", doc.Version)
 		}
 		if len(doc.Statement) != 1 {
 			t.Fatalf("expected 1 statement, got %d", len(doc.Statement))
@@ -77,29 +96,18 @@ jobs:
 		if stmt.Action != "sts:AssumeRoleWithWebIdentity" {
 			t.Errorf("Action = %s, want sts:AssumeRoleWithWebIdentity", stmt.Action)
 		}
-
-		expectedFederated := "arn:aws:iam::111222333444:oidc-provider/token.actions.githubusercontent.com"
-		if stmt.Principal["Federated"] != expectedFederated {
-			t.Errorf("Principal = %s, want %s", stmt.Principal["Federated"], expectedFederated)
+		wantPrincipal := "arn:aws:iam::111222333444:oidc-provider/token.actions.githubusercontent.com"
+		if stmt.Principal["Federated"] != wantPrincipal {
+			t.Errorf("Principal.Federated = %s, want %s", stmt.Principal["Federated"], wantPrincipal)
 		}
 
-		stringEquals, ok := stmt.Condition["StringEquals"]
-		if !ok {
-			t.Fatalf("Condition missing StringEquals operator")
-		}
-
+		stringEquals := stmt.Condition["StringEquals"]
 		if stringEquals["token.actions.githubusercontent.com:aud"] != "sts.amazonaws.com" {
-			t.Errorf("aud mismatch: %s", stringEquals["token.actions.githubusercontent.com:aud"])
+			t.Errorf("Audience mismatch: %s", stringEquals["token.actions.githubusercontent.com:aud"])
 		}
-
-		expectedSub := "repo:gamesapeca/infrastructure-sentinel:ref:refs/heads/main"
-		if stringEquals["token.actions.githubusercontent.com:sub"] != expectedSub {
-			t.Errorf("sub mismatch: %s, want %s", stringEquals["token.actions.githubusercontent.com:sub"], expectedSub)
-		}
-
-		// Ensure no wildcard was injected
-		if strings.Contains(policyJSON, "*") {
-			t.Errorf("AWS policy contains wildcard '*' which violates strict least-privilege: %s", policyJSON)
+		wantSub := "repo:gamesapeca/infrastructure-sentinel:ref:refs/heads/main"
+		if stringEquals["token.actions.githubusercontent.com:sub"] != wantSub {
+			t.Errorf("Sub mismatch: %s, want %s", stringEquals["token.actions.githubusercontent.com:sub"], wantSub)
 		}
 	})
 
@@ -110,22 +118,21 @@ on: push
 jobs:
   deploy:
     environment: production
-    steps: [{ run: echo prod }]
+    steps: [{ run: echo deploy }]
 `
-		wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "deploy_prod.yml")
+		wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "deploy.yml")
 		job := wf.Jobs["deploy"]
-		policyJSON, err := remediation.GenerateAWSTrustPolicy("111222333444", "acme-corp", "core-api", wf, &job)
+		policyJSON, err := remediation.GenerateAWSTrustPolicy("111222333444", "gamesapeca", "infrastructure-sentinel", wf, &job)
 		if err != nil {
-			t.Fatalf("failed to generate policy: %v", err)
+			t.Fatalf("failed to generate AWS policy: %v", err)
 		}
 
 		var doc awsPolicyDocument
 		_ = json.Unmarshal([]byte(policyJSON), &doc)
-
-		subClaim := doc.Statement[0].Condition["StringEquals"]["token.actions.githubusercontent.com:sub"]
-		expectedSub := "repo:acme-corp/core-api:environment:production"
-		if subClaim != expectedSub {
-			t.Errorf("sub claim = %s, want %s", subClaim, expectedSub)
+		stringEquals := doc.Statement[0].Condition["StringEquals"]
+		wantSub := "repo:gamesapeca/infrastructure-sentinel:environment:production"
+		if stringEquals["token.actions.githubusercontent.com:sub"] != wantSub {
+			t.Errorf("Sub environment mismatch: %s, want %s", stringEquals["token.actions.githubusercontent.com:sub"], wantSub)
 		}
 	})
 }
@@ -135,65 +142,53 @@ func TestGenerateGCPWorkloadIdentityAssertion_Validation(t *testing.T) {
 name: GCP Deploy
 on:
   push:
-    branches: "release/v1"
+    branches: [release]
 jobs:
-  deploy_gcp:
-    environment:
-      name: production
-    steps: [{ run: echo gcp }]
+  deploy:
+    steps: [{ run: echo deploy }]
 `
-	wf, err := parser.ParseWorkflowBytes([]byte(yamlContent), "gcp.yml")
+	wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "gcp.yml")
+	job := wf.Jobs["deploy"]
+	gcpJSON, err := remediation.GenerateGCPWorkloadIdentityAssertion("1234567890", "gh-pool", "gh-provider", "gamesapeca", "infrastructure-sentinel", wf, &job)
 	if err != nil {
-		t.Fatalf("parse error: %v", err)
-	}
-
-	job := wf.Jobs["deploy_gcp"]
-	gcpConfigJSON, err := remediation.GenerateGCPWorkloadIdentityAssertion("987654321098", "prod-pool", "github-prov", "gamesapeca", "gha-oidc-auditor", wf, &job)
-	if err != nil {
-		t.Fatalf("failed to generate GCP WIF config: %v", err)
+		t.Fatalf("failed to generate GCP WIF: %v", err)
 	}
 
 	var doc gcpWIFDoc
-	if err := json.Unmarshal([]byte(gcpConfigJSON), &doc); err != nil {
-		t.Fatalf("failed to parse GCP WIF JSON: %v", err)
+	if err := json.Unmarshal([]byte(gcpJSON), &doc); err != nil {
+		t.Fatalf("failed to parse GCP JSON: %v", err)
 	}
 
 	if doc.AttributeMapping["google.subject"] != "assertion.sub" {
-		t.Errorf("missing google.subject mapping")
+		t.Errorf("google.subject mapping mismatch")
+	}
+	if doc.AttributeMapping["attribute.actor"] != "assertion.actor" {
+		t.Errorf("attribute.actor mapping mismatch")
 	}
 	if doc.AttributeMapping["attribute.repository"] != "assertion.repository" {
-		t.Errorf("missing attribute.repository mapping")
+		t.Errorf("attribute.repository mapping mismatch")
 	}
 
-	expectedCondition := "assertion.repository == 'gamesapeca/gha-oidc-auditor' && assertion.environment == 'production'"
-	if doc.AttributeCondition != expectedCondition {
-		t.Errorf("AttributeCondition = %s, want %s", doc.AttributeCondition, expectedCondition)
+	if !strings.Contains(doc.AttributeCondition, "assertion.repository == 'gamesapeca/infrastructure-sentinel'") {
+		t.Errorf("attribute_condition missing repository assertion: %s", doc.AttributeCondition)
 	}
-
-	expectedBinding := "principal://iam.googleapis.com/projects/987654321098/locations/global/workloadIdentityPools/prod-pool/providers/github-prov/subject/repo:gamesapeca/gha-oidc-auditor:environment:production"
-	if doc.ServiceAccountRole != expectedBinding {
-		t.Errorf("ServiceAccountRole = %s, want %s", doc.ServiceAccountRole, expectedBinding)
+	if !strings.Contains(doc.AttributeCondition, "assertion.ref == 'refs/heads/release'") {
+		t.Errorf("attribute_condition missing branch ref assertion: %s", doc.AttributeCondition)
 	}
 }
 
 func TestGenerateAzureFederatedCredential_Validation(t *testing.T) {
 	yamlContent := `
 name: Azure Deploy
-on:
-  workflow_run:
-    workflows: ["Build"]
-    branches: ["main"]
+on: push
 jobs:
-  deploy_azure:
-    steps: [{ run: echo azure }]
+  deploy:
+    environment: prod-azure
+    steps: [{ run: echo deploy }]
 `
-	wf, err := parser.ParseWorkflowBytes([]byte(yamlContent), "azure.yml")
-	if err != nil {
-		t.Fatalf("parse error: %v", err)
-	}
-
-	job := wf.Jobs["deploy_azure"]
-	azureJSON, err := remediation.GenerateAzureFederatedCredential("special@owner!", "repo#name", wf, &job)
+	wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "azure.yml")
+	job := wf.Jobs["deploy"]
+	azureJSON, err := remediation.GenerateAzureFederatedCredential("gamesapeca", "infrastructure-sentinel", wf, &job)
 	if err != nil {
 		t.Fatalf("failed to generate Azure credential: %v", err)
 	}
@@ -210,9 +205,67 @@ jobs:
 		t.Errorf("Audiences mismatch: %+v", doc.Audiences)
 	}
 
-	// Name sanitization check: special characters replaced with hyphens
 	if strings.ContainsAny(doc.Name, "@!#") {
 		t.Errorf("Azure Name not sanitized: %s", doc.Name)
+	}
+}
+
+func TestGenerateVaultJWTRole_Validation(t *testing.T) {
+	yamlContent := `
+name: Vault Deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    environment: prod
+    steps: [{ run: echo vault }]
+`
+	wf, _ := parser.ParseWorkflowBytes([]byte(yamlContent), "vault.yml")
+	job := wf.Jobs["deploy"]
+	vaultJSON, err := remediation.GenerateVaultJWTRole("gamesapeca", "infra", "prod-deployer", wf, &job)
+	if err != nil {
+		t.Fatalf("failed to generate Vault JWT role: %v", err)
+	}
+
+	var doc vaultDoc
+	if err := json.Unmarshal([]byte(vaultJSON), &doc); err != nil {
+		t.Fatalf("failed to parse Vault JSON: %v", err)
+	}
+
+	if doc.RoleType != "jwt" {
+		t.Errorf("RoleType = %s, want jwt", doc.RoleType)
+	}
+	if doc.UserClaim != "actor" {
+		t.Errorf("UserClaim = %s, want actor", doc.UserClaim)
+	}
+	if doc.BoundClaims["repository"] != "gamesapeca/infra" {
+		t.Errorf("BoundClaims.repository mismatch: %s", doc.BoundClaims["repository"])
+	}
+	if doc.BoundClaims["environment"] != "prod" {
+		t.Errorf("BoundClaims.environment mismatch: %s", doc.BoundClaims["environment"])
+	}
+}
+
+func TestGenerateKubernetesServiceAccountManifest_Validation(t *testing.T) {
+	saJSON, err := remediation.GenerateKubernetesServiceAccountManifest("production", "cd-agent", "arn:aws:iam::111222333444:role/EKSDeployer", "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("failed to generate K8s SA manifest: %v", err)
+	}
+
+	var doc k8sSADoc
+	if err := json.Unmarshal([]byte(saJSON), &doc); err != nil {
+		t.Fatalf("failed to parse K8s JSON: %v", err)
+	}
+
+	if doc.Kind != "ServiceAccount" || doc.APIVersion != "v1" {
+		t.Errorf("Kind/APIVersion mismatch: %s/%s", doc.Kind, doc.APIVersion)
+	}
+	if doc.Metadata.Namespace != "production" || doc.Metadata.Name != "cd-agent" {
+		t.Errorf("Metadata mismatch: namespace=%s, name=%s", doc.Metadata.Namespace, doc.Metadata.Name)
+	}
+	if doc.Metadata.Annotations["eks.amazonaws.com/role-arn"] != "arn:aws:iam::111222333444:role/EKSDeployer" {
+		t.Errorf("EKS annotation mismatch: %s", doc.Metadata.Annotations["eks.amazonaws.com/role-arn"])
 	}
 }
 

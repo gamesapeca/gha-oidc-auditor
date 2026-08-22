@@ -105,6 +105,7 @@ type Job struct {
 	Permissions    map[string]string `yaml:"-"`
 	PermissionsAll string            `yaml:"-"`
 	Environment    interface{}       `yaml:"environment"`
+	RunsOn         interface{}       `yaml:"runs-on"`
 	Steps          []Step            `yaml:"steps"`
 }
 
@@ -115,6 +116,7 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 		Uses        string                 `yaml:"uses"`
 		Permissions yaml.Node              `yaml:"permissions"`
 		Environment interface{}            `yaml:"environment"`
+		RunsOn      interface{}            `yaml:"runs-on"`
 		Steps       []Step                 `yaml:"steps"`
 	}
 
@@ -126,6 +128,7 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 	j.Name = raw.Name
 	j.Uses = raw.Uses
 	j.Environment = raw.Environment
+	j.RunsOn = raw.RunsOn
 	j.Steps = raw.Steps
 
 	switch raw.Permissions.Kind {
@@ -160,6 +163,27 @@ func (j *Job) GetEnvironmentName() string {
 		}
 	}
 	return ""
+}
+
+// IsSelfHosted determines if the job executes on a self-hosted runner.
+func (j *Job) IsSelfHosted() bool {
+	if j == nil || j.RunsOn == nil {
+		return false
+	}
+
+	switch v := j.RunsOn.(type) {
+	case string:
+		return strings.Contains(strings.ToLower(v), "self-hosted")
+	case []interface{}:
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				if strings.Contains(strings.ToLower(str), "self-hosted") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Step represents a sequential step execution within a Job.
