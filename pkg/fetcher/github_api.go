@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
-	"github.com/google/go-github/v62/github"
+	"github.com/google/go-github/v69/github"
 	"golang.org/x/oauth2"
 )
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/fetcher"
-	"github.com/google/go-github/v62/github"
+	"github.com/google/go-github/v69/github"
 )
 
 func TestScanLocalPath_Directory(t *testing.T) {
