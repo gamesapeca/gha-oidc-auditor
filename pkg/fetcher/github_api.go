@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -41,7 +42,13 @@ func ExecuteWithRetry[T any](ctx context.Context, fn func() (T, *github.Response
 			return val, nil
 		}
 
-		if resp != nil && resp.StatusCode == 403 && resp.Rate.Remaining == 0 {
+		if ctx.Err() != nil {
+			var zero T
+			return zero, ctx.Err()
+		}
+
+		// Nil-safe check for HTTP 403 Rate Limiting
+		if resp != nil && resp.Response != nil && resp.StatusCode == http.StatusForbidden && resp.Rate.Remaining == 0 {
 			resetTime := resp.Rate.Reset.Time
 			waitDuration := time.Until(resetTime) + 2*time.Second
 			if waitDuration > 0 {

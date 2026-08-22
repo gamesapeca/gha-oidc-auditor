@@ -21,9 +21,19 @@ var KnownCloudActions = []CloudActionSpec{
 		KeyFields:    []string{"role-to-assume", "aws-region", "role-session-name"},
 	},
 	{
+		ActionPrefix: "aws-actions/amazon-ecr-login",
+		Provider:     ProviderAWS,
+		KeyFields:    []string{"role-to-assume", "aws-region"},
+	},
+	{
 		ActionPrefix: "google-github-actions/auth",
 		Provider:     ProviderGCP,
-		KeyFields:    []string{"workload_identity_provider", "service_account", "project_id"},
+		KeyFields:    []string{"service_account", "workload_identity_provider", "project_id"},
+	},
+	{
+		ActionPrefix: "google-github-actions/setup-gcloud",
+		Provider:     ProviderGCP,
+		KeyFields:    []string{"service_account", "workload_identity_provider"},
 	},
 	{
 		ActionPrefix: "azure/login",
@@ -33,7 +43,7 @@ var KnownCloudActions = []CloudActionSpec{
 	{
 		ActionPrefix: "hashicorp/vault-action",
 		Provider:     ProviderVault,
-		KeyFields:    []string{"url", "role", "method", "path"},
+		KeyFields:    []string{"role", "url", "method", "path"},
 	},
 }
 
@@ -52,42 +62,28 @@ func MatchCloudAction(step parser.Step) (CloudMatchResult, bool) {
 		return CloudMatchResult{}, false
 	}
 
+	trimmedUses := strings.TrimSpace(step.Uses)
+	lowerUses := strings.ToLower(trimmedUses)
+
 	for _, spec := range KnownCloudActions {
-		if strings.HasPrefix(step.Uses, spec.ActionPrefix) {
+		if strings.HasPrefix(lowerUses, strings.ToLower(spec.ActionPrefix)) {
 			res := CloudMatchResult{
 				Provider:  spec.Provider,
-				Action:    step.Uses,
+				Action:    trimmedUses,
 				Extracted: make(map[string]string),
 			}
 
-			for _, field := range spec.KeyFields {
-				val := step.GetWithString(field)
+			for _, key := range spec.KeyFields {
+				val := step.GetWithString(key)
+				if val == "" {
+					val = step.GetEnvString(key)
+				}
 				if val != "" {
-					res.Extracted[field] = val
-				}
-			}
-
-			// Extract primary target identity
-			switch spec.Provider {
-			case ProviderAWS:
-				if role := res.Extracted["role-to-assume"]; role != "" {
-					res.HasTarget = true
-					res.TargetInfo = role
-				}
-			case ProviderGCP:
-				if sa := res.Extracted["service_account"]; sa != "" {
-					res.HasTarget = true
-					res.TargetInfo = sa
-				}
-			case ProviderAzure:
-				if clientID := res.Extracted["client-id"]; clientID != "" {
-					res.HasTarget = true
-					res.TargetInfo = clientID
-				}
-			case ProviderVault:
-				if role := res.Extracted["role"]; role != "" {
-					res.HasTarget = true
-					res.TargetInfo = role
+					res.Extracted[key] = val
+					if res.TargetInfo == "" {
+						res.TargetInfo = val
+						res.HasTarget = true
+					}
 				}
 			}
 

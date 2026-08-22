@@ -17,8 +17,13 @@ var UntrustedContexts = []string{
 	"github.event.pull_request.head.ref",
 	"github.event.pull_request.head.label",
 	"github.event.pull_request.head.repo.default_branch",
+	"github.event.pull_request.head.repo.full_name",
 	"github.event.comment.body",
 	"github.event.review.body",
+	"github.event.review_comment.body",
+	"github.event.release.body",
+	"github.event.release.name",
+	"github.event.client_payload",
 	"github.event.pages",
 	"github.event.commits",
 	"github.event.head_commit.message",
@@ -28,6 +33,7 @@ var UntrustedContexts = []string{
 	"github.event.workflow_run.head_commit.message",
 	"github.head_ref",
 	"github.event.inputs.",
+	"inputs.",
 }
 
 // ExprRegex matches any ${{ ... }} expression, including multiline expressions.
