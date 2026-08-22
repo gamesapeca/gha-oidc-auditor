@@ -31,18 +31,18 @@ func main() {
 		Short: "Security static analyzer & least-privilege cloud trust policy generator for GitHub Actions OIDC",
 		Long: `gha-oidc-auditor is a static security analysis tool for GitHub Actions workflows.
 It detects supply-chain and privilege escalation risks in ephemeral OIDC token lifecycles (id-token: write),
-vulnerable execution triggers (pull_request_target, workflow_run), unpinned mutable dependencies,
-and synthesizes minimal-privilege Cloud Trust Policies for AWS, GCP, and Azure.`,
+vulnerable execution triggers (pull_request_target, workflow_run), and synthesizes minimal-privilege
+Cloud Trust Policies for AWS, GCP, and Azure.`,
 		RunE: runAudit,
 	}
 
-	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "Local path to a workflow file or directory (.github/workflows)")
+	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "Local path to workflow file or directory (.github/workflows)")
 	rootCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "Remote repository in owner/repo format (e.g. gamesapeca/gha-oidc-auditor)")
 	rootCmd.Flags().StringVarP(&flagOrg, "org", "o", "", "GitHub organization name to audit all repositories")
 	rootCmd.Flags().StringVarP(&flagToken, "token", "t", "", "GitHub Personal Access Token (or read from $GITHUB_TOKEN)")
 	rootCmd.Flags().StringVarP(&flagFormat, "format", "f", "console", "Output format: console, json, markdown")
 	rootCmd.Flags().StringVar(&flagFailOn, "fail-on", "critical", "Severity threshold for non-zero exit code: critical, high, medium, all, none")
-	rootCmd.Flags().BoolVar(&flagGeneratePolicies, "generate-policies", false, "Synthesize least-privilege cloud trust policies (AWS/GCP/Azure) for audited workflows")
+	rootCmd.Flags().BoolVar(&flagGeneratePolicies, "generate-policies", false, "Synthesize least-privilege cloud trust policies for audited workflows")
 	rootCmd.Flags().StringVar(&flagOutput, "output", "", "Output file path to save the generated audit report")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -62,8 +62,8 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	var allWorkflows []*parser.Workflow
 	targetName := "local"
 
-	// 1. Identify workflow data source
-	if flagPath != "" {
+	switch {
+	case flagPath != "":
 		targetName = flagPath
 		wfs, err := fetcher.ScanLocalPath(flagPath)
 		if err != nil {
@@ -71,11 +71,12 @@ func runAudit(cmd *cobra.Command, args []string) error {
 			os.Exit(report.ExitParseError)
 		}
 		allWorkflows = wfs
-	} else if flagRepo != "" {
+
+	case flagRepo != "":
 		targetName = flagRepo
 		parts := strings.Split(flagRepo, "/")
 		if len(parts) != 2 {
-			fmt.Fprintf(os.Stderr, "Invalid repository format. Use owner/repo (e.g. gamesapeca/gha-oidc-auditor)\n")
+			fmt.Fprintf(os.Stderr, "Invalid repository format. Expected owner/repo (e.g. gamesapeca/gha-oidc-auditor)\n")
 			os.Exit(report.ExitInvalidArgs)
 		}
 
@@ -86,7 +87,8 @@ func runAudit(cmd *cobra.Command, args []string) error {
 			os.Exit(report.ExitAPIError)
 		}
 		allWorkflows = wfs
-	} else if flagOrg != "" {
+
+	case flagOrg != "":
 		targetName = flagOrg
 		ghFetcher := fetcher.NewGitHubFetcher(token)
 		orgWorkflows, err := ghFetcher.FetchOrgWorkflows(ctx, flagOrg)
@@ -97,8 +99,8 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		for _, wfs := range orgWorkflows {
 			allWorkflows = append(allWorkflows, wfs...)
 		}
-	} else {
-		// Attempt default directory lookup .github/workflows
+
+	default:
 		if _, err := os.Stat(".github/workflows"); err == nil {
 			targetName = ".github/workflows"
 			wfs, err := fetcher.ScanLocalPath(".github/workflows")
@@ -116,10 +118,8 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		os.Exit(report.ExitOK)
 	}
 
-	// 2. Execute security audit
 	auditReport := engine.AnalyzeWorkflows(targetName, allWorkflows)
 
-	// 3. Synthesize trust policies if requested
 	generatedPolicies := make(map[string]string)
 	if flagGeneratePolicies {
 		for _, wf := range allWorkflows {
@@ -134,29 +134,34 @@ func runAudit(cmd *cobra.Command, args []string) error {
 			}
 
 			for jobName, job := range wf.Jobs {
-				if analyzer.IsJobOIDCPrivileged(wf, jobName) {
-					for _, step := range job.Steps {
-						if match, ok := analyzer.MatchCloudAction(step); ok {
-							switch match.Provider {
-							case analyzer.ProviderAWS:
-								policy, err := remediation.GenerateAWSTrustPolicy("123456789012", owner, repo, wf, &job)
-								if err == nil {
-									key := fmt.Sprintf("%s_%s_AWS_TrustPolicy.json", wf.Name, jobName)
-									generatedPolicies[key] = policy
-								}
-							case analyzer.ProviderGCP:
-								policy, err := remediation.GenerateGCPWorkloadIdentityAssertion("123456789012", "pool-id", "github-provider", owner, repo, wf, &job)
-								if err == nil {
-									key := fmt.Sprintf("%s_%s_GCP_WIF.json", wf.Name, jobName)
-									generatedPolicies[key] = policy
-								}
-							case analyzer.ProviderAzure:
-								policy, err := remediation.GenerateAzureFederatedCredential(owner, repo, wf, &job)
-								if err == nil {
-									key := fmt.Sprintf("%s_%s_Azure_Federation.json", wf.Name, jobName)
-									generatedPolicies[key] = policy
-								}
-							}
+				if !analyzer.IsJobOIDCPrivileged(wf, jobName) {
+					continue
+				}
+
+				for _, step := range job.Steps {
+					match, ok := analyzer.MatchCloudAction(step)
+					if !ok {
+						continue
+					}
+
+					switch match.Provider {
+					case analyzer.ProviderAWS:
+						policy, err := remediation.GenerateAWSTrustPolicy("123456789012", owner, repo, wf, &job)
+						if err == nil {
+							key := fmt.Sprintf("%s_%s_AWS_TrustPolicy.json", wf.Name, jobName)
+							generatedPolicies[key] = policy
+						}
+					case analyzer.ProviderGCP:
+						policy, err := remediation.GenerateGCPWorkloadIdentityAssertion("123456789012", "pool-id", "github-provider", owner, repo, wf, &job)
+						if err == nil {
+							key := fmt.Sprintf("%s_%s_GCP_WIF.json", wf.Name, jobName)
+							generatedPolicies[key] = policy
+						}
+					case analyzer.ProviderAzure:
+						policy, err := remediation.GenerateAzureFederatedCredential(owner, repo, wf, &job)
+						if err == nil {
+							key := fmt.Sprintf("%s_%s_Azure_Federation.json", wf.Name, jobName)
+							generatedPolicies[key] = policy
 						}
 					}
 				}
@@ -164,7 +169,6 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Render report in selected format
 	var outputContent string
 	switch strings.ToLower(flagFormat) {
 	case "json":
@@ -174,10 +178,11 @@ func runAudit(cmd *cobra.Command, args []string) error {
 			os.Exit(report.ExitParseError)
 		}
 		outputContent = jsonStr
+
 	case "markdown", "md":
 		outputContent = report.ExportMarkdown(auditReport, generatedPolicies)
+
 	default:
-		// Console format
 		if flagOutput == "" {
 			report.RenderConsole(os.Stdout, auditReport)
 			if len(generatedPolicies) > 0 {
@@ -193,18 +198,16 @@ func runAudit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5. Write to file if --output flag was specified
 	if flagOutput != "" {
 		if err := os.WriteFile(flagOutput, []byte(outputContent), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing report to %s: %v\n", flagOutput, err)
 			os.Exit(report.ExitParseError)
 		}
-		fmt.Printf("Audit report successfully saved to: %s\n", flagOutput)
+		fmt.Printf("Audit report written to %s\n", flagOutput)
 	} else if outputContent != "" {
 		fmt.Println(outputContent)
 	}
 
-	// 6. Determine exit code based on findings and --fail-on threshold
 	exitCode := report.DetermineExitCode(auditReport, flagFailOn)
 	os.Exit(exitCode)
 	return nil

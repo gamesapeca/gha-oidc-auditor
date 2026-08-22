@@ -12,7 +12,7 @@ type Workflow struct {
 	Name           string            `yaml:"name"`
 	RawContent     string            `yaml:"-"`
 	Permissions    map[string]string `yaml:"-"`
-	PermissionsAll string            `yaml:"-"` // "read-all", "write-all", or empty
+	PermissionsAll string            `yaml:"-"`
 	On             TriggerConfig     `yaml:"on"`
 	Jobs           map[string]Job    `yaml:"jobs"`
 }
@@ -35,10 +35,10 @@ func (w *Workflow) UnmarshalYAML(value *yaml.Node) error {
 	w.On = raw.On
 	w.Jobs = raw.Jobs
 
-	// Decode permissions at root level (polymorphic scalar vs map)
-	if raw.Permissions.Kind == yaml.ScalarNode {
+	switch raw.Permissions.Kind {
+	case yaml.ScalarNode:
 		w.PermissionsAll = raw.Permissions.Value
-	} else if raw.Permissions.Kind == yaml.MappingNode {
+	case yaml.MappingNode:
 		var m map[string]string
 		if err := raw.Permissions.Decode(&m); err == nil {
 			w.Permissions = m
@@ -56,22 +56,18 @@ type TriggerConfig struct {
 
 // UnmarshalYAML implements yaml.Unmarshaler for TriggerConfig.
 func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
-	// Case 1: Simple scalar string (on: push)
-	if value.Kind == yaml.ScalarNode {
+	switch value.Kind {
+	case yaml.ScalarNode:
 		tc.Events = []string{value.Value}
 		return nil
-	}
 
-	// Case 2: Sequence of strings (on: [push, pull_request])
-	if value.Kind == yaml.SequenceNode {
+	case yaml.SequenceNode:
 		for _, item := range value.Content {
 			tc.Events = append(tc.Events, item.Value)
 		}
 		return nil
-	}
 
-	// Case 3: Mapping with sub-conditions (on: { push: { branches: [main] } })
-	if value.Kind == yaml.MappingNode {
+	case yaml.MappingNode:
 		var m map[string]interface{}
 		if err := value.Decode(&m); err != nil {
 			return err
@@ -81,9 +77,10 @@ func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
 		}
 		tc.Conditions = m
 		return nil
-	}
 
-	return fmt.Errorf("unrecognized trigger config format (kind: %v)", value.Kind)
+	default:
+		return fmt.Errorf("unsupported trigger structure kind %v", value.Kind)
+	}
 }
 
 // Job represents a single job definition within a workflow.
@@ -91,7 +88,7 @@ type Job struct {
 	Name           string                 `yaml:"name"`
 	Uses           string                 `yaml:"uses"`
 	Permissions    map[string]string      `yaml:"-"`
-	PermissionsAll string                 `yaml:"-"` // "read-all", "write-all", or empty
+	PermissionsAll string                 `yaml:"-"`
 	Environment    interface{}            `yaml:"environment"`
 	Steps          []Step                 `yaml:"steps"`
 }
@@ -116,10 +113,10 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 	j.Environment = raw.Environment
 	j.Steps = raw.Steps
 
-	// Decode permissions at job level (polymorphic scalar vs map)
-	if raw.Permissions.Kind == yaml.ScalarNode {
+	switch raw.Permissions.Kind {
+	case yaml.ScalarNode:
 		j.PermissionsAll = raw.Permissions.Value
-	} else if raw.Permissions.Kind == yaml.MappingNode {
+	case yaml.MappingNode:
 		var m map[string]string
 		if err := raw.Permissions.Decode(&m); err == nil {
 			j.Permissions = m

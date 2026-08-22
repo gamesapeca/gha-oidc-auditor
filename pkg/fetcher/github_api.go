@@ -65,14 +65,12 @@ func ExecuteWithRetry[T any](ctx context.Context, fn func() (T, *github.Response
 func (f *GitHubFetcher) FetchRepoWorkflows(ctx context.Context, owner, repo string) ([]*parser.Workflow, error) {
 	var workflows []*parser.Workflow
 
-	// 1. List directory entries in .github/workflows
 	dirEntries, err := ExecuteWithRetry(ctx, func() ([]*github.RepositoryContent, *github.Response, error) {
 		_, entries, resp, err := f.client.Repositories.GetContents(ctx, owner, repo, ".github/workflows", nil)
 		return entries, resp, err
 	})
 
 	if err != nil {
-		// If repository does not have a .github/workflows directory, return empty set
 		if strings.Contains(err.Error(), "404") {
 			return workflows, nil
 		}
@@ -134,7 +132,6 @@ func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[
 			if err == nil && len(wfs) > 0 {
 				results[repoName] = wfs
 			}
-			// Polite rate throttling interval between repository inspections
 			time.Sleep(150 * time.Millisecond)
 		}
 

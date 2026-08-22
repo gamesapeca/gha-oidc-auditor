@@ -1,131 +1,92 @@
 # gha-oidc-auditor
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Go Version](https://img.shields.io/badge/Go-%3E%3D%201.22-00ADD8?logo=go)](https://golang.org/)
-[![CI](https://img.shields.io/badge/Security-AST%20Auditor-red.svg)]()
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gamesapeca/gha-oidc-auditor.svg)](https://pkg.go.dev/github.com/gamesapeca/gha-oidc-auditor)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gamesapeca/gha-oidc-auditor)](https://goreportcard.com/report/github.com/gamesapeca/gha-oidc-auditor)
 
-> **Security static analyzer & least-privilege cloud trust policy generator for GitHub Actions OIDC workflows.**
+Static security analyzer and least-privilege cloud trust policy engine for GitHub Actions OIDC workflows.
 
-`gha-oidc-auditor` is an automated security analyzer designed to detect and remediate **Supply-Chain-to-Cloud Takeover** vulnerabilities in GitHub Actions workflows. It inspects ephemeral token issuance (`id-token: write`), execution triggers (`pull_request_target`, `workflow_run`), dependency immutability (SHA pinning), and context expression injections (`${{ ... }}`), synthesizing minimal-privilege Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, and Azure Entra ID.
+`gha-oidc-auditor` scans workflow ASTs to detect supply-chain vulnerabilities, permission leaks, and untrusted execution paths that expose ephemeral OIDC tokens (`id-token: write`). It also synthesizes minimal-privilege Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, and Azure Entra ID based on parsed workflow triggers and environments.
 
----
+## Threat Model
 
-## 🎯 The Threat Landscape
+When GitHub Actions workflows use OIDC to authenticate against cloud providers (AWS, GCP, Azure, HashiCorp Vault), ephemeral JSON Web Tokens (JWTs) are issued by GitHub's OIDC provider (`token.actions.githubusercontent.com`).
 
-The migration from long-lived static secrets (`AWS_SECRET_ACCESS_KEY`) to federated OIDC authentication significantly improved credential safety in repose. However, it created a critical attack surface centered around the **ephemeral token lifecycle**:
+Vulnerabilities in workflow configuration or dependency management allow adversaries to compromise or mint tokens:
 
-```
-+-----------------------------------------------------------------------------------------+
-|                               ATTACK & EXPLOITATION SURFACE                             |
-+-----------------------------------------------------------------------------------------+
-| 1. Unauthorized Token Minting via External PR                                           |
-|    'pull_request_target' + 'permissions: id-token: write'                               |
-|    ──► External fork PRs can mint base repository OIDC tokens.                          |
-|                                                                                         |
-| 2. Dependency Hijacking in Privileged Jobs (Tag Poisoning)                             |
-|    Mutable action references (e.g. '@v4', '@main') in OIDC jobs                        |
-|    ──► Compromised upstream action captures ACTIONS_ID_TOKEN_REQUEST_URL from runner.    |
-|                                                                                         |
-| 3. Expression Context Injection (RCE)                                                   |
-|    Interpolation of '${{ github.event.issue.title }}' in 'run:' steps                   |
-|    ──► Injected command exfiltrates OIDC JWT prior to cloud authentication.             |
-|                                                                                         |
-| 4. Overprivileged Cloud Trust Policies (Wildcard IAM)                                   |
-|    Overly broad 'sub' claims (e.g. 'repo:org/*') in Cloud Provider                      |
-|    ──► Any repository in the organization can assume production cloud roles.            |
-+-----------------------------------------------------------------------------------------+
-```
+1. **Unauthorized Token Minting (`pull_request_target`)**: Workflows triggered by `pull_request_target` with `id-token: write` allow pull requests from forks to mint tokens with base-repository claims unless gated by environment approvals.
+2. **Action Poisoning in Privileged Jobs**: Unpinned actions (using tags like `@v4` or `@main`) in jobs with `id-token: write` can be backdoored upstream to read `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` from runner memory.
+3. **Context Injection to Token Exfiltration**: Untrusted context expressions (`${{ github.event.issue.title }}`) interpolated into `run:` scripts allow arbitrary command execution before or during cloud authentication.
+4. **Overprivileged Cloud Trust Policies**: Wildcard claims (`repo:org/*`) in cloud trust policies allow any repository in an organization to assume production roles.
 
----
-
-## ⚡ Key Features
-
-- **End-to-End OIDC Chain Analysis:** Evaluates `Trigger -> AST -> id-token Permission -> Cloud Action -> Blast Radius`.
-- **Precedence-Aware Permission Resolution:** Accurately models GitHub Actions permission inheritance (`Job > Workflow > Org Default`).
-- **Cloud Action Matcher:** Identifies and extracts Role ARNs, GCP Workload Pools, and Azure Client IDs from steps.
-- **Automated Trust Policy Synthesizer:** Automatically generates minimal least-privilege IAM Trust Policies with strict `StringEquals` constraints for `aud` and `sub`.
-- **CI/CD Integration Ready:** Configurable `--fail-on` thresholds and standard exit codes (`0`, `1`, `2`) for pipeline gates.
-- **Resilient Remote Scans:** GitHub REST API fetcher with automatic `X-RateLimit-Reset` backoff and pagination.
-
----
-
-## 📊 Comparison Matrix
-
-| Feature | `actionlint` | `zizmor` | `checkov` | `gha-oidc-auditor` |
-| :--- | :---: | :---: | :---: | :---: |
-| **Primary Domain** | Syntax & Types | General GHA Linter | IaC & Compliance | **OIDC & Cloud Trust Security** |
-| **OIDC + Cloud Provider Correlation** | ❌ | Partial | ❌ | **✅ Full (Roles, ARNs, Pools)** |
-| **Cloud Trust Policy Generator** | ❌ | ❌ | ❌ | **✅ Automated (AWS / GCP / Azure)** |
-| **Untrusted Context Injection in OIDC** | ❌ | ✅ | ❌ | **✅ Multiline AST Extraction** |
-| **Precedence Permission Matrix** | ❌ | Partial | ❌ | **✅ Full Matrix Resolution** |
-| **Remote Organization Auditing** | ❌ | Partial | ❌ | **✅ Rate-Limited Async Fetcher** |
-
----
-
-## 🛡️ Rules Catalog
+## Rules Catalog
 
 | Rule ID | Severity | Name | Description |
-| :--- | :---: | :--- | :--- |
-| **`OIDC-001`** | `HIGH` | Global `id-token: write` Exposure | Workflow defines `id-token: write` or `write-all` at the root level instead of restricting to specific jobs. |
-| **`OIDC-002`** | `CRITICAL` | Ungated `pull_request_target` OIDC | Trigger `pull_request_target` combined with `id-token: write` without environment manual approval gate. |
-| **`OIDC-003`** | `HIGH` | Mutable Action in OIDC Job | Privileged OIDC job uses mutable action references (`@v4`, `@main`) instead of immutable 40-character SHAs. |
-| **`OIDC-004`** | `CRITICAL` | Context Injection in OIDC Step | Untrusted context (`${{ github.event.* }}`) interpolated into `run:` steps in an OIDC-privileged job. |
-| **`OIDC-005`** | `MEDIUM` | Multi-Cloud Scope Ambiguity | Multiple cloud providers (e.g. AWS & GCP) authenticated within the same unsegmented job. |
-| **`OIDC-006`** | `CRITICAL` | Unfiltered `workflow_run` OIDC | Workflow triggered via `workflow_run` without branch filtering while minting OIDC tokens. |
+| :--- | :--- | :--- | :--- |
+| `OIDC-001` | HIGH | Global `id-token: write` | Workflow grants `id-token: write` at root level instead of job scope. |
+| `OIDC-002` | CRITICAL | Ungated `pull_request_target` | `pull_request_target` trigger with OIDC write without environment protection rules. |
+| `OIDC-003` | HIGH | Unpinned Action in OIDC Job | Privileged OIDC job uses mutable action refs instead of 40-char commit SHAs. |
+| `OIDC-004` | CRITICAL | Context Injection in OIDC Step | Untrusted `${{ github.event.* }}` expressions evaluated in shell steps in OIDC jobs. |
+| `OIDC-005` | MEDIUM | Multi-Cloud Ambiguity | Multiple cloud provider authentications combined in a single unsegmented job. |
+| `OIDC-006` | CRITICAL | Unfiltered `workflow_run` | `workflow_run` trigger without branch filters minting OIDC tokens. |
 
----
+## Installation
 
-## 🚀 Installation
+### Binary Installation
 
-### Via Go Install:
 ```bash
 go install github.com/gamesapeca/gha-oidc-auditor/cmd/gha-oidc@latest
 ```
 
-### Build from Source:
+### Build from Source
+
 ```bash
 git clone https://github.com/gamesapeca/gha-oidc-auditor.git
 cd gha-oidc-auditor
-go build -o gha-oidc ./cmd/gha-oidc
+make build
 ```
 
----
+## Usage
 
-## 📖 Usage
+### Local Workflow Audit
 
-### 1. Audit Local Repository Workflows
+Scan all workflows in `.github/workflows`:
+
 ```bash
-gha-oidc --path ./.github/workflows
+gha-oidc --path .github/workflows
 ```
 
-### 2. Audit Remote GitHub Repository
+Scan a single workflow file:
+
 ```bash
-gha-oidc --repo owner/repository --token $GITHUB_TOKEN
+gha-oidc --path .github/workflows/deploy.yml
 ```
 
-### 3. Audit Entire GitHub Organization
+### Remote Repository Audit
+
+Audit a remote repository using the GitHub API:
+
 ```bash
-gha-oidc --org your-organization --token $GITHUB_TOKEN --format markdown --output audit_report.md
+gha-oidc --repo owner/repo --token $GITHUB_TOKEN
 ```
 
-### 4. Synthesize Least-Privilege Cloud Trust Policies
+### Organization-Wide Scan
+
+Scan all active repositories in an organization:
+
 ```bash
-gha-oidc --path ./.github/workflows --generate-policies
+gha-oidc --org my-org --token $GITHUB_TOKEN --format markdown --output audit-report.md
 ```
 
-### 5. CI/CD Security Gate (GitHub Actions)
-```yaml
-- name: Audit OIDC Workflows
-  run: |
-    go install github.com/gamesapeca/gha-oidc-auditor/cmd/gha-oidc@latest
-    gha-oidc --path ./.github/workflows --fail-on critical
+### Least-Privilege Trust Policy Generation
+
+Generate scoped trust policies for AWS, GCP, or Azure based on detected workflow triggers and environments:
+
+```bash
+gha-oidc --path .github/workflows --generate-policies
 ```
 
----
-
-## 📋 Generated Policy Sample (AWS IAM)
-
-When run with `--generate-policies`, `gha-oidc-auditor` extracts workflow context to generate strict IAM Trust Policies:
+Example generated AWS IAM Trust Policy:
 
 ```json
 {
@@ -148,18 +109,61 @@ When run with `--generate-policies`, `gha-oidc-auditor` extracts workflow contex
 }
 ```
 
----
+### CI/CD Integration
 
-## 🧪 Testing
+Add `gha-oidc-auditor` as a pipeline gate:
 
-Execute the comprehensive test suite (AST, Rules Engine, Remediation, Fetcher, and Reports):
+```yaml
+name: Security Audit
 
-```bash
-go test -v ./...
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Run OIDC Security Audit
+        run: |
+          go run ./cmd/gha-oidc --path .github/workflows --fail-on critical
 ```
 
----
+## Flags Reference
 
-## 📄 License
+| Flag | Shorthand | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--path` | `-p` | `.github/workflows` | Local path to workflow file or directory |
+| `--repo` | `-r` | `""` | Remote GitHub repository (`owner/repo`) |
+| `--org` | `-o` | `""` | GitHub organization name |
+| `--token` | `-t` | `$GITHUB_TOKEN` | GitHub API Personal Access Token |
+| `--format` | `-f` | `console` | Output format (`console`, `json`, `markdown`) |
+| `--fail-on` | | `critical` | Exit threshold (`critical`, `high`, `medium`, `all`, `none`) |
+| `--generate-policies` | | `false` | Synthesize least-privilege cloud trust policies |
+| `--output` | | `""` | Output file path for audit results |
 
-Distributed under the **Apache License 2.0**. See [`LICENSE`](LICENSE) for more information.
+## Exit Codes
+
+- `0`: Scan passed; no findings at or above failure threshold.
+- `1`: Non-critical findings detected at or above failure threshold.
+- `2`: Critical vulnerabilities detected (`OIDC-002`, `OIDC-004`, `OIDC-006`).
+- `3`: Workflow parsing error.
+- `4`: GitHub API communication failure.
+- `5`: Invalid CLI arguments.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) for details.

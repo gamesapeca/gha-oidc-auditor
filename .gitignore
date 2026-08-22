@@ -1,4 +1,5 @@
-# Binaries for programs and plugins
+# Binaries
+bin/
 *.exe
 *.exe~
 *.dll
@@ -7,13 +8,12 @@
 /gha-oidc
 /gha-oidc.exe
 
-# Test binary, built with `go test -c`
+# Test binary & coverage
 *.test
-
-# Output of the go coverage tool
 *.out
+coverage.out
 
-# Go workspace file
+# Go workspace
 go.work
 
 # IDE / OS specific files
