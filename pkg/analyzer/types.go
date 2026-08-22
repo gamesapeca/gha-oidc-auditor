@@ -19,12 +19,16 @@ const (
 type CloudProvider string
 
 const (
-	ProviderAWS   CloudProvider = "AWS"
-	ProviderGCP   CloudProvider = "GCP"
-	ProviderAzure CloudProvider = "Azure"
-	ProviderVault CloudProvider = "Vault"
-	ProviderNone  CloudProvider = "Unknown"
+	ProviderAWS        CloudProvider = "AWS"
+	ProviderGCP        CloudProvider = "GCP"
+	ProviderAzure      CloudProvider = "Azure"
+	ProviderVault      CloudProvider = "Vault"
+	ProviderSigstore   CloudProvider = "Sigstore/Attestations"
+	ProviderTailscale  CloudProvider = "Tailscale"
+	ProviderKubernetes CloudProvider = "Kubernetes"
+	ProviderNone       CloudProvider = "Unknown"
 )
+
 
 // ExploitChain describes an end-to-end zero-prerequisite attack path suitable for Bug Bounty reporting.
 type ExploitChain struct {

@@ -45,7 +45,28 @@ var KnownCloudActions = []CloudActionSpec{
 		Provider:     ProviderVault,
 		KeyFields:    []string{"role", "url", "method", "path"},
 	},
+	{
+		ActionPrefix: "actions/attest-build-provenance",
+		Provider:     ProviderSigstore,
+		KeyFields:    []string{"subject-path", "subject-checksums"},
+	},
+	{
+		ActionPrefix: "actions/attest",
+		Provider:     ProviderSigstore,
+		KeyFields:    []string{"subject-path", "subject-name"},
+	},
+	{
+		ActionPrefix: "tailscale/github-action",
+		Provider:     ProviderTailscale,
+		KeyFields:    []string{"oauth-client-id", "tags"},
+	},
+	{
+		ActionPrefix: "azure/k8s-set-context",
+		Provider:     ProviderKubernetes,
+		KeyFields:    []string{"method", "cluster-name"},
+	},
 }
+
 
 // CloudMatchResult holds metadata extracted from an identified cloud authentication action step.
 type CloudMatchResult struct {

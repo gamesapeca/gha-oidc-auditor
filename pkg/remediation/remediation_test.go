@@ -311,3 +311,47 @@ jobs:
 		t.Errorf("Fallback should be main, got: %s", sub3)
 	}
 }
+
+func TestGenerateAWS2026TrustPolicy_Validation(t *testing.T) {
+	yamlContent := `
+name: Deploy Prod
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    environment: production
+    steps: [{ run: echo 1 }]
+`
+	wf, err := parser.ParseWorkflowBytes([]byte(yamlContent), "deploy.yml")
+	if err != nil {
+		t.Fatalf("failed to parse workflow: %v", err)
+	}
+
+	job := wf.Jobs["deploy"]
+	policyJSON, err := remediation.GenerateAWS2026TrustPolicy("112233445566", "my-org", "my-repo", wf, &job)
+	if err != nil {
+		t.Fatalf("GenerateAWS2026TrustPolicy failed: %v", err)
+	}
+
+	if !strings.Contains(policyJSON, "token.actions.githubusercontent.com:aud") {
+		t.Errorf("missing audience condition in 2026 policy: %s", policyJSON)
+	}
+	if !strings.Contains(policyJSON, "repo:my-org/my-repo:environment:production") {
+		t.Errorf("missing legacy sub claim in 2026 policy: %s", policyJSON)
+	}
+	if !strings.Contains(policyJSON, "repo:my-org@*/my-repo@*:environment:production") {
+		t.Errorf("missing immutable numeric ID sub claim pattern in 2026 policy: %s", policyJSON)
+	}
+}
+
+func TestSynthesizeCustomPropertyClaim_Validation(t *testing.T) {
+	claimName, val := remediation.SynthesizeCustomPropertyClaim("tier", "production")
+	if claimName != "token.actions.githubusercontent.com:repo_property_tier" {
+		t.Errorf("unexpected claim name: %s", claimName)
+	}
+	if val != "production" {
+		t.Errorf("unexpected claim value: %s", val)
+	}
+}
+
