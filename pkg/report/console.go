@@ -84,17 +84,20 @@ func RenderConsole(w io.Writer, report *analyzer.AuditReport) {
 	// Zero-Prerequisite Bug Bounty Exploit Chains
 	if len(report.ExploitChains) > 0 {
 		fmt.Fprintln(w, red(strings.Repeat("-", 80)))
-		fmt.Fprintln(w, red("  [!] EXPLOITABLE BUG BOUNTY ATTACK CHAINS IDENTIFIED (Zero-Prerequisite RCE) "))
+		fmt.Fprintln(w, red("  [!] EXPLOITABLE BUG BOUNTY ATTACK CHAINS IDENTIFIED "))
 		fmt.Fprintln(w, red(strings.Repeat("-", 80)))
 		for i, ec := range report.ExploitChains {
-			fmt.Fprintf(w, "\n%d. %s %s - %s\n", i+1, red("[EXPLOITABLE]"), color.CyanString(ec.ID), ec.Title)
+			fmt.Fprintf(w, "\n%d. %s %s [%s / %s] - %s\n", i+1, red("[EXPLOITABLE]"), color.CyanString(ec.ID), color.YellowString(ec.Category), ec.CWE, ec.Title)
 			fmt.Fprintf(w, "   Target Workflow: %s (Job: %s)\n", ec.WorkflowPath, ec.JobName)
 			fmt.Fprintf(w, "   Ingress Trigger: %s (Vector: %s)\n", color.YellowString(ec.TriggerEvent), ec.IngressVector)
-			fmt.Fprintf(w, "   Cloud Target:    %s (%s)\n", ec.TargetCloud, ec.TargetRoleARN)
+			if ec.TargetCloud != "" && ec.TargetCloud != analyzer.ProviderNone {
+				fmt.Fprintf(w, "   Cloud Target:    %s (%s)\n", ec.TargetCloud, ec.TargetRoleARN)
+			}
 			fmt.Fprintf(w, "   PoC Payload:     %s\n", color.GreenString(ec.PoCPayload))
 			fmt.Fprintln(w, strings.Repeat("-", 80))
 		}
 		fmt.Fprintln(w)
 	}
+
 }
 

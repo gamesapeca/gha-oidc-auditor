@@ -48,12 +48,16 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 		sb.WriteString("## 3. Zero-Prerequisite Bug Bounty Exploit Chains\n\n")
 		for i, ec := range report.ExploitChains {
 			sb.WriteString(fmt.Sprintf("### %d. [%s] %s\n\n", i+1, ec.ID, ec.Title))
-			sb.WriteString(fmt.Sprintf("- **Severity:** `CRITICAL` (CVSS 9.8)\n"))
+			sb.WriteString(fmt.Sprintf("- **Category:** `%s`\n", ec.Category))
+			sb.WriteString(fmt.Sprintf("- **CWE:** `%s`\n", ec.CWE))
+			sb.WriteString(fmt.Sprintf("- **Severity:** `%s`\n", ec.Severity))
 			sb.WriteString(fmt.Sprintf("- **Workflow:** `%s`\n", ec.WorkflowPath))
 			sb.WriteString(fmt.Sprintf("- **Job:** `%s`\n", ec.JobName))
 			sb.WriteString(fmt.Sprintf("- **Ingress Trigger:** `%s`\n", ec.TriggerEvent))
 			sb.WriteString(fmt.Sprintf("- **Ingress Vector:** `%s`\n", ec.IngressVector))
-			sb.WriteString(fmt.Sprintf("- **Cloud Target:** `%s` (`%s`)\n\n", ec.TargetCloud, ec.TargetRoleARN))
+			if ec.TargetCloud != "" && ec.TargetCloud != analyzer.ProviderNone {
+				sb.WriteString(fmt.Sprintf("- **Cloud Target:** `%s` (`%s`)\n\n", ec.TargetCloud, ec.TargetRoleARN))
+			}
 			sb.WriteString("#### Proof of Concept Payload:\n\n")
 			sb.WriteString("```bash\n")
 			sb.WriteString(ec.PoCPayload)
@@ -61,6 +65,7 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 			sb.WriteString("---\n\n")
 		}
 	}
+
 
 	if len(generatedPolicies) > 0 {
 		secNum := 3

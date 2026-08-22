@@ -30,6 +30,8 @@ const (
 type ExploitChain struct {
 	ID             string        `json:"id"`
 	Title          string        `json:"title"`
+	Category       string        `json:"category"` // e.g. "Remote Code Execution", "Privilege Escalation", "Information Disclosure"
+	CWE            string        `json:"cwe"`      // e.g. "CWE-269", "CWE-522", "CWE-78", "CWE-284"
 	Severity       Severity      `json:"severity"` // Always CRITICAL
 	WorkflowPath   string        `json:"workflow_path"`
 	JobName        string        `json:"job_name"`
@@ -42,6 +44,7 @@ type ExploitChain struct {
 	PoCPayload     string        `json:"poc_payload"`
 	ReportTemplate string        `json:"report_template"`
 }
+
 
 // Finding describes a specific detected security issue or misconfiguration.
 type Finding struct {

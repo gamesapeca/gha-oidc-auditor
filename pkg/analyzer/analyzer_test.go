@@ -763,6 +763,78 @@ func TestExploitChainDetection_AllPrimitives(t *testing.T) {
 		}
 	})
 
+	t.Run("CHAIN-005: Token Write Privilege Escalation", func(t *testing.T) {
+		writeYaml := `
+name: Write Escalation
+on: pull_request_target
+jobs:
+  pwn:
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+`
+		wf, _ := parser.ParseWorkflowBytes([]byte(writeYaml), "write_pwn.yml")
+		report := engine.AnalyzeWorkflows("write_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 || report.ExploitChains[0].ID != "CHAIN-005" {
+			t.Errorf("expected CHAIN-005, got %+v", report.ExploitChains)
+		}
+		if report.ExploitChains[0].CWE != "CWE-269" {
+			t.Errorf("expected CWE-269, got %s", report.ExploitChains[0].CWE)
+		}
+	})
+
+	t.Run("CHAIN-006: External Secrets Delegation Leak", func(t *testing.T) {
+		secYaml := `
+name: Secrets Leak
+on: issues
+jobs:
+  call-ext:
+    uses: third-party/workflows/.github/workflows/reusable.yml@v1
+    secrets: inherit
+`
+		wf, _ := parser.ParseWorkflowBytes([]byte(secYaml), "sec_leak.yml")
+		report := engine.AnalyzeWorkflows("sec_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 || report.ExploitChains[0].ID != "CHAIN-006" {
+			t.Errorf("expected CHAIN-006, got %+v", report.ExploitChains)
+		}
+	})
+
+	t.Run("CHAIN-007: Runner Environment Hijacking via GITHUB_ENV", func(t *testing.T) {
+		envYaml := `
+name: Env Hijack
+on: issues
+jobs:
+  inject:
+    steps:
+      - run: echo "TITLE=${{ github.event.issue.title }}" >> $GITHUB_ENV
+`
+		wf, _ := parser.ParseWorkflowBytes([]byte(envYaml), "env_hijack.yml")
+		report := engine.AnalyzeWorkflows("env_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 || report.ExploitChains[0].ID != "CHAIN-007" {
+			t.Errorf("expected CHAIN-007, got %+v", report.ExploitChains)
+		}
+	})
+
+	t.Run("CHAIN-008: Self-Hosted Runner Public Takeover", func(t *testing.T) {
+		hostYaml := `
+name: Host Takeover
+on: pull_request
+jobs:
+  runner:
+    runs-on: self-hosted
+    steps:
+      - run: make test
+`
+		wf, _ := parser.ParseWorkflowBytes([]byte(hostYaml), "host_pwn.yml")
+		report := engine.AnalyzeWorkflows("host_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 || report.ExploitChains[0].ID != "CHAIN-008" {
+			t.Errorf("expected CHAIN-008, got %+v", report.ExploitChains)
+		}
+	})
+
 	t.Run("Negative Control: Actor guarded PRT produces ZERO Exploit Chains", func(t *testing.T) {
 		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/safe_prt_actor_guarded.yml")
 		if err != nil {
@@ -775,5 +847,6 @@ func TestExploitChainDetection_AllPrimitives(t *testing.T) {
 		}
 	})
 }
+
 
 

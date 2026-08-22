@@ -50,14 +50,19 @@ Adversaries exploit configuration flaws across 4 primary attack vectors:
 
 ## Zero-Prerequisite Exploit Chains (Bug Bounty Mode)
 
-In addition to SAST posture auditing, `gha-oidc-auditor` can operate in **Bug Bounty Mode** (`--bounty-mode`). In this mode, the engine correlates multi-condition security flaws to identify only **100% exploitable zero-prerequisite attack chains**:
+In addition to SAST posture auditing, `gha-oidc-auditor` operates in **Bug Bounty Mode** (`--bounty-mode`). In this mode, the engine correlates multi-condition security flaws across all primary CI/CD vulnerability classes:
 
-* **`CHAIN-001` (Pwn-Request RCE via `pull_request_target`)**: `pull_request_target` + no environment approval gate + no actor guard + checkout of untrusted fork ref (`head.sha`) + subsequent build/test script execution + `id-token: write`.
-* **`CHAIN-002` (Public Trigger Shell Command Injection)**: Public event trigger (`issues`, `issue_comment`, `pull_request`) + no actor guard + shell step interpolating external data (`${{ github.event.comment.body }}`) + `id-token: write`.
-* **`CHAIN-003` (JavaScript Code Injection in `actions/github-script`)**: Public trigger + inline `${{ }}` template interpolation in JavaScript step + `id-token: write`.
-* **`CHAIN-004` (Privilege Escalation via `workflow_run` Artifact Poisoning)**: `workflow_run` without branch filters + artifact download + execution + `id-token: write`.
+* **`CHAIN-001` (Pwn-Request RCE via `pull_request_target`)** `[CWE-94 - CVSS 9.8]`: `pull_request_target` + no environment approval gate + no actor guard + checkout of untrusted fork ref (`head.sha`) + subsequent build/test execution + `id-token: write`.
+* **`CHAIN-002` (Public Trigger Shell Command Injection)** `[CWE-78 - CVSS 9.8]`: Public event trigger (`issues`, `issue_comment`, `pull_request`) + no actor guard + shell step interpolating external data (`${{ github.event.comment.body }}`) + `id-token: write`.
+* **`CHAIN-003` (JavaScript Code Injection in `actions/github-script`)** `[CWE-94 - CVSS 9.8]`: Public trigger + inline `${{ }}` template interpolation in JavaScript step + `id-token: write`.
+* **`CHAIN-004` (Privilege Escalation via `workflow_run` Artifact Poisoning)** `[CWE-494 - CVSS 9.3]`: `workflow_run` without branch filters + artifact download + execution + `id-token: write`.
+* **`CHAIN-005` (Token Write Privilege Escalation via `pull_request_target`)** `[CWE-269 - CVSS 9.1]`: `pull_request_target` + untrusted fork checkout + `contents: write` / `write-all` permissions without environment approval gate.
+* **`CHAIN-006` (Repository Secrets Exfiltration via `secrets: inherit`)** `[CWE-522 - CVSS 8.6]`: Public trigger + external reusable workflow call with `secrets: inherit` without actor filters.
+* **`CHAIN-007` (Runner Environment Hijacking via `$GITHUB_ENV`)** `[CWE-78 - CVSS 9.8]`: Public trigger + writing untrusted context directly to `$GITHUB_ENV` or `$GITHUB_PATH`.
+* **`CHAIN-008` (Self-Hosted Runner Infrastructure Takeover)** `[CWE-284 - CVSS 9.8]`: Public trigger + execution on self-hosted runners without environment approval gate.
 
-When executed with `--generate-poc`, the engine outputs a submission-ready Markdown report complete with reproduction steps and deterministic cloud credential exfiltration payloads for AWS STS, GCP WIF, Azure AD, and HashiCorp Vault.
+When executed with `--generate-poc`, the engine outputs a submission-ready Markdown report complete with HackerOne/Intigriti CWE classifications, reproduction steps, and deterministic cloud credential exfiltration payloads for AWS STS, GCP WIF, Azure AD, and HashiCorp Vault.
+
 
 ## Installation
 
