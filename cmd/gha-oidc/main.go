@@ -163,6 +163,12 @@ func runAudit(cmd *cobra.Command, args []string) error {
 							key := fmt.Sprintf("%s_%s_Azure_Federation.json", wf.Name, jobName)
 							generatedPolicies[key] = policy
 						}
+					case analyzer.ProviderVault:
+						policy, err := remediation.GenerateVaultJWTRole(owner, repo, "deployer-role", wf, &job)
+						if err == nil {
+							key := fmt.Sprintf("%s_%s_Vault_JWTRole.json", wf.Name, jobName)
+							generatedPolicies[key] = policy
+						}
 					}
 				}
 			}

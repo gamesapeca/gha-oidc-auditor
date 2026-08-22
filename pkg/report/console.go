@@ -23,9 +23,9 @@ func RenderConsole(w io.Writer, report *analyzer.AuditReport) {
 	yellow := color.New(color.FgYellow, color.Bold).SprintfFunc()
 
 	fmt.Fprintln(w)
-	cyan(w, "==================================================================================\n")
+	cyan(w, "----------------------------------------------------------------------------------\n")
 	cyan(w, "  GHA-OIDC-AUDITOR: Security Static Analyzer & Least-Privilege Trust Policy Engine\n")
-	cyan(w, "==================================================================================\n\n")
+	cyan(w, "----------------------------------------------------------------------------------\n\n")
 
 	fmt.Fprintf(w, "  Target:            %s\n", report.TargetRepo)
 	fmt.Fprintf(w, "  Workflows Scanned: %d\n", report.WorkflowsNum)
