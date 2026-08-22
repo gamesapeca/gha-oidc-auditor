@@ -45,12 +45,63 @@ Adversaries exploit configuration flaws across 4 primary attack vectors:
 | `OIDC-004` | CRITICAL / MEDIUM | Context & Input Injection | Untrusted expressions interpolated in shell steps in OIDC jobs. Differentiates external attacker payloads (CRITICAL) from internal parameters (MEDIUM). |
 | `OIDC-005` | MEDIUM | Multi-Cloud Ambiguity | Multiple cloud provider authentications combined in a single unsegmented job. |
 | `OIDC-006` | CRITICAL | Unfiltered `workflow_run` | `workflow_run` trigger without branch filters minting OIDC tokens. |
-| `OIDC-007` | HIGH | Self-Hosted Runner in OIDC Job | Non-ephemeral self-hosted runner executing privileged OIDC workflow. |
+| `OIDC-007` | HIGH | Self-Hosted Runner in OIDC Job | Non-ephemeral self-hosted runner executing privileged OIDC workflow on public triggers without approval gates. |
 | `OIDC-008` | HIGH | External `secrets: inherit` | OIDC-privileged job delegating all caller secrets to external/third-party reusable workflows. |
-| `OIDC-009` | HIGH | High-Value Action Mutable Tag (CVE-2025-30066 Class) | Detects high-value supply chain actions (e.g. `tj-actions`, `docker`, `aws-actions`) pinned by mutable tags anywhere in the workflow. |
-| `OIDC-010` | INFO | OIDC Sub-Claim Name-Squatting Risk (2026 Immutable Format) | Advisory finding detecting missing numeric organization and repository IDs (`repo:org@ID/repo@ID`) in subject claims following GitHub's July 2026 specification update. |
-| `OIDC-011` | CRITICAL / HIGH | Secret / OIDC Token Exfiltration to Workflow Logs | Detects shell execution patterns leaking secrets (`echo $ACTIONS_ID_TOKEN...`, `printenv`, `env -0`) or deprecated `::set-output::` syntax. |
-| `OIDC-012` | HIGH | Wildcard OIDC Trust Policy Detection | Identifies cloud authentication configurations using wildcard sub-claims (`repo:org/*`), exposing organization-wide blast radius. |
+| `OIDC-009` | HIGH | High-Value Action Mutable Tag | Detects high-value supply chain actions (e.g. `tj-actions`, `docker`, `aws-actions`) pinned by mutable tags anywhere in the workflow (CVE-2025-30066 class). |
+| `OIDC-010` | INFO | 2026 Immutable Sub-Claim Format | Advisory finding detecting missing numeric organization and repository IDs (`repo:org@ID/repo@ID:*`) in subject claims following GitHub's July 2026 update. |
+| `OIDC-011` | CRITICAL / HIGH | Secret / OIDC Token Log Exfiltration | Detects shell execution patterns leaking secrets (`echo $ACTIONS_ID_TOKEN...`, `printenv`, `env -0`) or deprecated `::set-output::` syntax. |
+| `OIDC-012` | HIGH | Wildcard Cloud Trust Policy | Identifies cloud authentication configurations using wildcard sub-claims (`repo:org/*`), exposing organization-wide blast radius. |
+
+### Detailed Rule Explanations
+
+#### OIDC-001: Global id-token: write Permission
+Workflows defining `permissions: id-token: write` at the top level expose token minting rights to all jobs, violating job-level isolation.
+* Remediation: Define `permissions:` exclusively inside specific deployment jobs that interact with cloud providers.
+
+#### OIDC-002: Context-Aware pull_request_target
+The `pull_request_target` event runs in the context of the base repository. When combined with checkout of the fork reference (`ref: ${{ github.event.pull_request.head.sha }}`) and `id-token: write`, an external contributor can execute malicious code with base repository OIDC rights.
+* Remediation: Gate the job behind a GitHub Environment approval or use `on: pull_request` for untrusted contributions.
+
+#### OIDC-003: Action Pinning in Privileged Jobs
+Actions referenced by mutable git tags (`@v4`, `@main`) can be hijacked upstream if maintainer credentials are compromised. In an OIDC-privileged job, a compromised action can exfiltrate `$ACTIONS_ID_TOKEN_REQUEST_TOKEN` directly from runner memory.
+* Remediation: Pin actions to their immutable 40-character commit SHA (e.g., `actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11`).
+
+#### OIDC-004: Context and Input Injection
+Direct inline interpolation of untrusted expressions (e.g., `${{ github.event.issue.title }}`) into `run:` script bodies allows shell metacharacter injection before or during cloud authentication.
+* Remediation: Pass dynamic context variables through environment variables under `env:` rather than inline template syntax `${{ }}`.
+
+#### OIDC-005: Multi-Cloud Ambiguity
+Authenticating against multiple cloud providers (e.g., AWS and GCP) in the same unsegmented job increases blast radius if one step or dependency is compromised.
+* Remediation: Separate cloud deployments into dedicated, isolated jobs.
+
+#### OIDC-006: Unfiltered workflow_run
+Workflows triggering on `workflow_run` without explicit branch filters (`branches: [main]`) can be triggered by workflow runs from arbitrary branches, minting OIDC tokens on untrusted code executions.
+* Remediation: Restrict `workflow_run` to protected branches and verify `github.event.workflow_run.head_branch`.
+
+#### OIDC-007: Self-Hosted Runner on Public Triggers
+Executing OIDC-privileged jobs on self-hosted runners without ephemeral container isolation or environment gates allows persistent compromise of internal network infrastructure.
+* Remediation: Use GitHub-hosted runners or ephemeral runner groups with mandatory review gates.
+
+#### OIDC-008: External secrets: inherit Delegation
+Using `secrets: inherit` when calling external reusable workflows from third-party repositories passes all caller repository secrets to external infrastructure.
+* Remediation: Explicitly define only the required secret arguments rather than inheriting all secrets.
+
+#### OIDC-009: High-Value Action Mutable Tags (Supply Chain Hardening)
+High-value actions frequently targeted in supply chain attacks (such as `tj-actions/changed-files`, `docker/login-action`, `aws-actions/configure-aws-credentials`) should always be SHA-pinned regardless of whether the specific job has OIDC tokens enabled.
+* Remediation: Pin all high-value supply chain dependencies to 40-character commit SHAs.
+
+#### OIDC-010: July 2026 Immutable Sub-Claim Verification
+As of July 15, 2026, GitHub updated the default OIDC subject claim to include immutable numeric IDs (`repo:org@ID/repo@ID:*`). IAM policies relying solely on mutable repository names are vulnerable to name-squatting if an organization or repository is deleted and reregistered.
+* Remediation: Update AWS IAM and cloud trust policies to accept both legacy and immutable numeric ID formats.
+
+#### OIDC-011: Secret / OIDC Token Log Exfiltration
+Shell commands executing `printenv`, `env -0`, or dumping token variables (`$ACTIONS_ID_TOKEN_REQUEST_TOKEN`) write sensitive ephemeral tokens into workflow logs, exposing them to log scraping.
+* Remediation: Remove debug print statements and migrate away from deprecated `::set-output::` commands.
+
+#### OIDC-012: Wildcard Cloud Trust Policy Detection
+Cloud IAM trust policies configured with `repo:org/*` allow any repository in an organization to assume production roles, breaking tenant isolation.
+* Remediation: Scope trust conditions strictly to specific repositories, branches (`ref:refs/heads/main`), and environments (`environment:production`).
+
 
 
 ## Zero-Prerequisite Exploit Chains (Bug Bounty Mode)

@@ -355,3 +355,65 @@ func TestSynthesizeCustomPropertyClaim_Validation(t *testing.T) {
 	}
 }
 
+func TestValidateAWSTrustPolicyJSON(t *testing.T) {
+	t.Run("Valid scoped policy with immutable claims", func(t *testing.T) {
+		policyJSON := `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": [
+            "repo:my-org/my-repo:ref:refs/heads/main",
+            "repo:my-org@*/my-repo@*:ref:refs/heads/main"
+          ]
+        }
+      }
+    }
+  ]
+}`
+		res, err := remediation.ValidateAWSTrustPolicyJSON(policyJSON, "my-org", "my-repo")
+		if err != nil {
+			t.Fatalf("validation error: %v", err)
+		}
+		if !res.Valid {
+			t.Errorf("expected valid policy, got warnings: %+v", res.Warnings)
+		}
+	})
+
+	t.Run("Overprivileged wildcard policy detection", func(t *testing.T) {
+		wildcardJSON := `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:my-org/*"
+        }
+      }
+    }
+  ]
+}`
+		res, err := remediation.ValidateAWSTrustPolicyJSON(wildcardJSON, "my-org", "my-repo")
+		if err != nil {
+			t.Fatalf("validation error: %v", err)
+		}
+		if res.Valid {
+			t.Errorf("expected wildcard policy to be invalid")
+		}
+	})
+}
+
+
