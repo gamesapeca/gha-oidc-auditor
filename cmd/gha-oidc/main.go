@@ -23,6 +23,9 @@ var (
 	flagFailOn           string
 	flagGeneratePolicies bool
 	flagOutput           string
+	flagBountyMode       bool
+	flagGeneratePoC      bool
+	flagPoCOutput        string
 )
 
 func main() {
@@ -44,6 +47,9 @@ Cloud Trust Policies for AWS, GCP, and Azure.`,
 	rootCmd.Flags().StringVar(&flagFailOn, "fail-on", "critical", "Severity threshold for non-zero exit code: critical, high, medium, all, none")
 	rootCmd.Flags().BoolVar(&flagGeneratePolicies, "generate-policies", false, "Synthesize least-privilege cloud trust policies for audited workflows")
 	rootCmd.Flags().StringVar(&flagOutput, "output", "", "Output file path to save the generated audit report")
+	rootCmd.Flags().BoolVar(&flagBountyMode, "bounty-mode", false, "Filter report to display only exploitable zero-prerequisite attack chains")
+	rootCmd.Flags().BoolVar(&flagGeneratePoC, "generate-poc", false, "Generate a submission-ready Bug Bounty PoC Markdown report")
+	rootCmd.Flags().StringVar(&flagPoCOutput, "poc-output", "", "Output file path to save the generated Bug Bounty PoC report")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(report.ExitInvalidArgs)
@@ -119,6 +125,41 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	}
 
 	auditReport := engine.AnalyzeWorkflows(targetName, allWorkflows)
+
+	if flagBountyMode {
+		// In bounty mode, clear non-exploit findings to maximize signal-to-noise ratio
+		auditReport.Findings = nil
+		auditReport.Summary = map[analyzer.Severity]int{
+			analyzer.SeverityCritical: len(auditReport.ExploitChains),
+			analyzer.SeverityHigh:     0,
+			analyzer.SeverityMedium:   0,
+			analyzer.SeverityLow:      0,
+			analyzer.SeverityInfo:     0,
+		}
+	}
+
+	if flagGeneratePoC {
+		pocContent := report.GenerateBugBountyReport(auditReport)
+		pocDest := flagPoCOutput
+		if pocDest == "" {
+			pocDest = flagOutput
+		}
+
+		if pocDest != "" {
+			if err := os.WriteFile(pocDest, []byte(pocContent), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "Error writing PoC report to %s: %v\n", pocDest, err)
+				os.Exit(report.ExitParseError)
+			}
+			fmt.Printf("Bug Bounty PoC report written to %s\n", pocDest)
+		} else {
+			fmt.Println(pocContent)
+		}
+
+		if len(auditReport.ExploitChains) > 0 {
+			os.Exit(report.ExitCriticalFound)
+		}
+		os.Exit(report.ExitOK)
+	}
 
 	generatedPolicies := make(map[string]string)
 	if flagGeneratePolicies {
@@ -217,4 +258,5 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	exitCode := report.DetermineExitCode(auditReport, flagFailOn)
 	os.Exit(exitCode)
 	return nil
+
 }

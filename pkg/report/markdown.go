@@ -44,8 +44,30 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 		}
 	}
 
+	if len(report.ExploitChains) > 0 {
+		sb.WriteString("## 3. Zero-Prerequisite Bug Bounty Exploit Chains\n\n")
+		for i, ec := range report.ExploitChains {
+			sb.WriteString(fmt.Sprintf("### %d. [%s] %s\n\n", i+1, ec.ID, ec.Title))
+			sb.WriteString(fmt.Sprintf("- **Severity:** `CRITICAL` (CVSS 9.8)\n"))
+			sb.WriteString(fmt.Sprintf("- **Workflow:** `%s`\n", ec.WorkflowPath))
+			sb.WriteString(fmt.Sprintf("- **Job:** `%s`\n", ec.JobName))
+			sb.WriteString(fmt.Sprintf("- **Ingress Trigger:** `%s`\n", ec.TriggerEvent))
+			sb.WriteString(fmt.Sprintf("- **Ingress Vector:** `%s`\n", ec.IngressVector))
+			sb.WriteString(fmt.Sprintf("- **Cloud Target:** `%s` (`%s`)\n\n", ec.TargetCloud, ec.TargetRoleARN))
+			sb.WriteString("#### Proof of Concept Payload:\n\n")
+			sb.WriteString("```bash\n")
+			sb.WriteString(ec.PoCPayload)
+			sb.WriteString("\n```\n\n")
+			sb.WriteString("---\n\n")
+		}
+	}
+
 	if len(generatedPolicies) > 0 {
-		sb.WriteString("## 3. Synthesized Least-Privilege Cloud Trust Policies\n\n")
+		secNum := 3
+		if len(report.ExploitChains) > 0 {
+			secNum = 4
+		}
+		sb.WriteString(fmt.Sprintf("## %d. Synthesized Least-Privilege Cloud Trust Policies\n\n", secNum))
 		for name, policy := range generatedPolicies {
 			sb.WriteString(fmt.Sprintf("### %s\n\n", name))
 			sb.WriteString("```json\n")
@@ -56,3 +78,25 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 
 	return sb.String()
 }
+
+// GenerateBugBountyReport compiles all detected Exploit Chains into a standalone submission-ready HackerOne/Bugcrowd report.
+func GenerateBugBountyReport(report *analyzer.AuditReport) string {
+	if report == nil || len(report.ExploitChains) == 0 {
+		return "# Bug Bounty Report\n\n> No zero-prerequisite exploit chains detected.\n"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("# Bug Bounty Vulnerability Submission Report\n\n")
+	sb.WriteString(fmt.Sprintf("**Target Repository:** `%s`  \n", report.TargetRepo))
+	sb.WriteString(fmt.Sprintf("**Timestamp:** %s  \n", report.ScanTime.Format("2006-01-02 15:04:05 UTC")))
+	sb.WriteString(fmt.Sprintf("**Total Critical Exploit Chains:** %d  \n\n", len(report.ExploitChains)))
+
+	for i, ec := range report.ExploitChains {
+		sb.WriteString(fmt.Sprintf("# Vulnerability #%d: %s\n\n", i+1, ec.Title))
+		sb.WriteString(ec.ReportTemplate)
+		sb.WriteString("\n---\n\n")
+	}
+
+	return sb.String()
+}
+

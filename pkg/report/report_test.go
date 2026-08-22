@@ -253,4 +253,54 @@ func TestRenderConsole_Outputs(t *testing.T) {
 			t.Errorf("[OK] message not rendered for zero findings")
 		}
 	})
+
+	t.Run("Console with Exploit Chains", func(t *testing.T) {
+		rep := analyzer.NewAuditReport("vulnerable/repo")
+		rep.AddExploitChain(analyzer.ExploitChain{
+			ID:            "CHAIN-001",
+			Title:         "Zero-Prerequisite Pwn-Request RCE",
+			Severity:      analyzer.SeverityCritical,
+			WorkflowPath:  ".github/workflows/pwn.yml",
+			JobName:       "pwn_job",
+			TriggerEvent:  "pull_request_target",
+			IngressVector: "actions/checkout",
+			TargetCloud:   analyzer.ProviderAWS,
+			PoCPayload:    "aws sts assume-role-with-web-identity ...",
+		})
+
+		var buf bytes.Buffer
+		report.RenderConsole(&buf, rep)
+
+		output := buf.String()
+		if !strings.Contains(output, "EXPLOITABLE BUG BOUNTY ATTACK CHAINS") {
+			t.Errorf("bug bounty banner missing in console output")
+		}
+		if !strings.Contains(output, "CHAIN-001") {
+			t.Errorf("CHAIN-001 missing in console output")
+		}
+	})
 }
+
+func TestGenerateBugBountyReport_Formatting(t *testing.T) {
+	rep := analyzer.NewAuditReport("gamesapeca/gha-oidc-auditor")
+	rep.AddExploitChain(analyzer.ExploitChain{
+		ID:             "CHAIN-001",
+		Title:          "Pwn-Request RCE",
+		Severity:       analyzer.SeverityCritical,
+		WorkflowPath:   ".github/workflows/prt.yml",
+		JobName:        "pwn",
+		ReportTemplate: "### Steps to Reproduce\n1. Submit PR\n2. Gain RCE",
+	})
+
+	md := report.GenerateBugBountyReport(rep)
+	if !strings.Contains(md, "# Bug Bounty Vulnerability Submission Report") {
+		t.Errorf("title missing from Bug Bounty report")
+	}
+	if !strings.Contains(md, "Pwn-Request RCE") {
+		t.Errorf("chain title missing from report")
+	}
+	if !strings.Contains(md, "Gain RCE") {
+		t.Errorf("reproduction steps missing from report")
+	}
+}
+

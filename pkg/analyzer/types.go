@@ -26,6 +26,23 @@ const (
 	ProviderNone  CloudProvider = "Unknown"
 )
 
+// ExploitChain describes an end-to-end zero-prerequisite attack path suitable for Bug Bounty reporting.
+type ExploitChain struct {
+	ID             string        `json:"id"`
+	Title          string        `json:"title"`
+	Severity       Severity      `json:"severity"` // Always CRITICAL
+	WorkflowPath   string        `json:"workflow_path"`
+	JobName        string        `json:"job_name"`
+	TriggerEvent   string        `json:"trigger_event"`
+	IngressVector  string        `json:"ingress_vector"`
+	ExecutionStep  int           `json:"execution_step"`
+	TargetCloud    CloudProvider `json:"target_cloud"`
+	TargetRoleARN  string        `json:"target_role_arn,omitempty"`
+	AudienceClaim  string        `json:"audience_claim"`
+	PoCPayload     string        `json:"poc_payload"`
+	ReportTemplate string        `json:"report_template"`
+}
+
 // Finding describes a specific detected security issue or misconfiguration.
 type Finding struct {
 	RuleID       string        `json:"rule_id"`
@@ -42,19 +59,21 @@ type Finding struct {
 
 // AuditReport aggregates scan results, findings, and summary statistics.
 type AuditReport struct {
-	TargetRepo   string           `json:"target_repo"`
-	ScanTime     time.Time        `json:"scan_time"`
-	WorkflowsNum int              `json:"workflows_scanned"`
-	Findings     []Finding        `json:"findings"`
-	Summary      map[Severity]int `json:"summary"`
+	TargetRepo    string           `json:"target_repo"`
+	ScanTime      time.Time        `json:"scan_time"`
+	WorkflowsNum  int              `json:"workflows_scanned"`
+	Findings      []Finding        `json:"findings"`
+	ExploitChains []ExploitChain   `json:"exploit_chains,omitempty"`
+	Summary       map[Severity]int `json:"summary"`
 }
 
 // NewAuditReport initializes an empty audit report for a given target.
 func NewAuditReport(target string) *AuditReport {
 	return &AuditReport{
-		TargetRepo: target,
-		ScanTime:   time.Now().UTC(),
-		Findings:   make([]Finding, 0),
+		TargetRepo:    target,
+		ScanTime:      time.Now().UTC(),
+		Findings:      make([]Finding, 0),
+		ExploitChains: make([]ExploitChain, 0),
 		Summary: map[Severity]int{
 			SeverityCritical: 0,
 			SeverityHigh:     0,
@@ -70,3 +89,9 @@ func (r *AuditReport) AddFinding(f Finding) {
 	r.Findings = append(r.Findings, f)
 	r.Summary[f.Severity]++
 }
+
+// AddExploitChain appends an exploitable attack chain to the report.
+func (r *AuditReport) AddExploitChain(ec ExploitChain) {
+	r.ExploitChains = append(r.ExploitChains, ec)
+}
+

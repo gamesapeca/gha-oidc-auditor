@@ -680,3 +680,100 @@ jobs:
 	})
 }
 
+func TestExploitChainDetection_AllPrimitives(t *testing.T) {
+	engine := analyzer.NewDefaultEngine()
+
+	t.Run("CHAIN-001: Pwn-Request RCE via pull_request_target", func(t *testing.T) {
+		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/pwn_request_rce.yml")
+		if err != nil {
+			t.Fatalf("failed to parse pwn_request_rce.yml: %v", err)
+		}
+
+		report := engine.AnalyzeWorkflows("pwn_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 {
+			t.Fatalf("expected at least 1 ExploitChain for pwn_request_rce.yml, got 0")
+		}
+
+		chain := report.ExploitChains[0]
+		if chain.ID != "CHAIN-001" {
+			t.Errorf("expected chain ID CHAIN-001, got %s", chain.ID)
+		}
+		if chain.Severity != analyzer.SeverityCritical {
+			t.Errorf("expected SeverityCritical for CHAIN-001, got %s", chain.Severity)
+		}
+		if chain.TriggerEvent != "pull_request_target" {
+			t.Errorf("expected trigger pull_request_target, got %s", chain.TriggerEvent)
+		}
+		if chain.PoCPayload == "" {
+			t.Errorf("expected non-empty PoCPayload")
+		}
+	})
+
+	t.Run("CHAIN-002: Context Injection via issue_comment", func(t *testing.T) {
+		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/issue_comment_injection.yml")
+		if err != nil {
+			t.Fatalf("failed to parse issue_comment_injection.yml: %v", err)
+		}
+
+		report := engine.AnalyzeWorkflows("injection_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 {
+			t.Fatalf("expected at least 1 ExploitChain for issue_comment_injection.yml, got 0")
+		}
+
+		chain := report.ExploitChains[0]
+		if chain.ID != "CHAIN-002" {
+			t.Errorf("expected chain ID CHAIN-002, got %s", chain.ID)
+		}
+		if chain.Severity != analyzer.SeverityCritical {
+			t.Errorf("expected SeverityCritical, got %s", chain.Severity)
+		}
+	})
+
+	t.Run("CHAIN-003: JavaScript Code Injection in actions/github-script", func(t *testing.T) {
+		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/github_script_injection.yml")
+		if err != nil {
+			t.Fatalf("failed to parse github_script_injection.yml: %v", err)
+		}
+
+		report := engine.AnalyzeWorkflows("script_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 {
+			t.Fatalf("expected at least 1 ExploitChain for github_script_injection.yml, got 0")
+		}
+
+		chain := report.ExploitChains[0]
+		if chain.ID != "CHAIN-003" {
+			t.Errorf("expected chain ID CHAIN-003, got %s", chain.ID)
+		}
+	})
+
+	t.Run("CHAIN-004: Artifact Poisoning via workflow_run", func(t *testing.T) {
+		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/workflow_run_artifact.yml")
+		if err != nil {
+			t.Fatalf("failed to parse workflow_run_artifact.yml: %v", err)
+		}
+
+		report := engine.AnalyzeWorkflows("artifact_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) == 0 {
+			t.Fatalf("expected at least 1 ExploitChain for workflow_run_artifact.yml, got 0")
+		}
+
+		chain := report.ExploitChains[0]
+		if chain.ID != "CHAIN-004" {
+			t.Errorf("expected chain ID CHAIN-004, got %s", chain.ID)
+		}
+	})
+
+	t.Run("Negative Control: Actor guarded PRT produces ZERO Exploit Chains", func(t *testing.T) {
+		wf, err := parser.ParseWorkflowFile("../../testdata/exploit_chains/safe_prt_actor_guarded.yml")
+		if err != nil {
+			t.Fatalf("failed to parse safe_prt_actor_guarded.yml: %v", err)
+		}
+
+		report := engine.AnalyzeWorkflows("guarded_test", []*parser.Workflow{wf})
+		if len(report.ExploitChains) != 0 {
+			t.Errorf("false positive exploit chain detected on guarded PRT: %+v", report.ExploitChains)
+		}
+	})
+}
+
+

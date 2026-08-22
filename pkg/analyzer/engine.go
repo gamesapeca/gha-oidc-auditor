@@ -37,7 +37,13 @@ func (e *Engine) AnalyzeWorkflows(targetName string, wfs []*parser.Workflow) *Au
 		for _, f := range findings {
 			report.AddFinding(f)
 		}
+
+		chains := DetectExploitChains(wf)
+		for _, c := range chains {
+			report.AddExploitChain(c)
+		}
 	}
 
 	return report
 }
+
