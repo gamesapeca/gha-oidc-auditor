@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/analyzer"
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
@@ -22,12 +23,32 @@ func SynthesizeSubClaim(owner, repo string, wf *parser.Workflow, job *parser.Job
 	if wf != nil && wf.On.Conditions != nil {
 		if pushCond, ok := wf.On.Conditions["push"].(map[string]interface{}); ok {
 			if branches, ok := pushCond["branches"].([]interface{}); ok && len(branches) > 0 {
-				return fmt.Sprintf("%s:ref:refs/heads/%v", base, branches[0])
+				branch := strings.TrimSpace(fmt.Sprintf("%v", branches[0]))
+				branch = strings.TrimPrefix(branch, "refs/heads/")
+				return fmt.Sprintf("%s:ref:refs/heads/%s", base, branch)
+			}
+			if branchStr, ok := pushCond["branches"].(string); ok && strings.TrimSpace(branchStr) != "" {
+				branch := strings.TrimSpace(branchStr)
+				branch = strings.TrimPrefix(branch, "refs/heads/")
+				return fmt.Sprintf("%s:ref:refs/heads/%s", base, branch)
+			}
+		}
+
+		if wrCond, ok := wf.On.Conditions["workflow_run"].(map[string]interface{}); ok {
+			if branches, ok := wrCond["branches"].([]interface{}); ok && len(branches) > 0 {
+				branch := strings.TrimSpace(fmt.Sprintf("%v", branches[0]))
+				branch = strings.TrimPrefix(branch, "refs/heads/")
+				return fmt.Sprintf("%s:ref:refs/heads/%s", base, branch)
+			}
+			if branchStr, ok := wrCond["branches"].(string); ok && strings.TrimSpace(branchStr) != "" {
+				branch := strings.TrimSpace(branchStr)
+				branch = strings.TrimPrefix(branch, "refs/heads/")
+				return fmt.Sprintf("%s:ref:refs/heads/%s", base, branch)
 			}
 		}
 	}
 
-	// Safe fallback default: main branch
+	// Safe default: main branch
 	return fmt.Sprintf("%s:ref:refs/heads/main", base)
 }
 

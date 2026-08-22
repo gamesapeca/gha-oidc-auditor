@@ -3,6 +3,7 @@ package remediation
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
@@ -42,7 +43,11 @@ func GenerateGCPWorkloadIdentityAssertion(projectNumber, poolID, providerID, own
 	} else if wf != nil && wf.On.Conditions != nil {
 		if pushCond, ok := wf.On.Conditions["push"].(map[string]interface{}); ok {
 			if branches, ok := pushCond["branches"].([]interface{}); ok && len(branches) > 0 {
-				condition = fmt.Sprintf("%s && assertion.ref == 'refs/heads/%v'", condition, branches[0])
+				branch := strings.TrimPrefix(fmt.Sprintf("%v", branches[0]), "refs/heads/")
+				condition = fmt.Sprintf("%s && assertion.ref == 'refs/heads/%s'", condition, branch)
+			} else if branchStr, ok := pushCond["branches"].(string); ok && strings.TrimSpace(branchStr) != "" {
+				branch := strings.TrimPrefix(strings.TrimSpace(branchStr), "refs/heads/")
+				condition = fmt.Sprintf("%s && assertion.ref == 'refs/heads/%s'", condition, branch)
 			}
 		}
 	}

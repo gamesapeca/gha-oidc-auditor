@@ -3,9 +3,12 @@ package remediation
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
+
+var azureNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9-_]`)
 
 type azureFederatedCredential struct {
 	Name        string   `json:"name"`
@@ -26,8 +29,14 @@ func GenerateAzureFederatedCredential(owner, repo string, wf *parser.Workflow, j
 
 	subClaim := SynthesizeSubClaim(owner, repo, wf, job)
 
+	rawName := fmt.Sprintf("gha-%s-%s", owner, repo)
+	sanitizedName := azureNameSanitizer.ReplaceAllString(rawName, "-")
+	if len(sanitizedName) > 120 {
+		sanitizedName = sanitizedName[:120]
+	}
+
 	cred := azureFederatedCredential{
-		Name:        fmt.Sprintf("gha-%s-%s", owner, repo),
+		Name:        sanitizedName,
 		Issuer:      "https://token.actions.githubusercontent.com",
 		Subject:     subClaim,
 		Description: fmt.Sprintf("GitHub Actions federated credential for %s/%s", owner, repo),
