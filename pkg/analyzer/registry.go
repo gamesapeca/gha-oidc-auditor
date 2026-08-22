@@ -47,6 +47,10 @@ func NewDefaultRegistry() *Registry {
 		&RuleOIDC006TriggerWorkflowRun{},
 		&RuleOIDC007SelfHosted{},
 		&RuleOIDC008SecretsInherit{},
+		&RuleOIDC009TagHijackRisk{},
+		&RuleOIDC010ImmutableSubClaim{},
+		&RuleOIDC011SecretLogExfiltration{},
 	)
 }
+
 
