@@ -8,18 +8,26 @@ import (
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
 
-var shaRegex = regexp.MustCompile(`@[0-9a-fA-F]{40}$`)
+var (
+	gitShaRegex    = regexp.MustCompile(`@[0-9a-fA-F]{40}$`)
+	dockerShaRegex = regexp.MustCompile(`^docker://.+@sha256:[0-9a-fA-F]{64}$`)
+)
 
 func isSafeActionRef(uses string) bool {
+	uses = strings.TrimSpace(uses)
 	if uses == "" {
 		return true
 	}
-	// Local repository action (e.g., ./actions/build)
-	if strings.HasPrefix(uses, "./") {
+	// Local repository actions
+	if strings.HasPrefix(uses, "./") || strings.HasPrefix(uses, ".\\") {
 		return true
 	}
-	// Immutable 40-character commit SHA
-	return shaRegex.MatchString(uses)
+	// Docker actions pinned by immutable sha256 digest
+	if strings.HasPrefix(uses, "docker://") {
+		return dockerShaRegex.MatchString(uses)
+	}
+	// Git actions pinned by immutable 40-character commit SHA
+	return gitShaRegex.MatchString(uses)
 }
 
 // RuleOIDC003ActionPinning checks whether actions in OIDC-privileged jobs use mutable tags (@vX, @main).

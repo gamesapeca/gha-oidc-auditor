@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
@@ -42,7 +43,20 @@ func (r *RuleOIDC006TriggerWorkflowRun) Check(wf *parser.Workflow) []Finding {
 	hasBranchRestriction := false
 	if wf.On.Conditions != nil {
 		if wrCond, ok := wf.On.Conditions["workflow_run"].(map[string]interface{}); ok {
+			// Check list format: branches: [main]
 			if branches, ok := wrCond["branches"].([]interface{}); ok && len(branches) > 0 {
+				hasBranchRestriction = true
+			}
+			// Check scalar format: branches: "main"
+			if branchStr, ok := wrCond["branches"].(string); ok && strings.TrimSpace(branchStr) != "" {
+				hasBranchRestriction = true
+			}
+			// Check list format: branches-ignore: [feat/*]
+			if branchesIgnore, ok := wrCond["branches-ignore"].([]interface{}); ok && len(branchesIgnore) > 0 {
+				hasBranchRestriction = true
+			}
+			// Check scalar format: branches-ignore: "feat/*"
+			if branchIgnoreStr, ok := wrCond["branches-ignore"].(string); ok && strings.TrimSpace(branchIgnoreStr) != "" {
 				hasBranchRestriction = true
 			}
 		}
