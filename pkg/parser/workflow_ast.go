@@ -101,11 +101,13 @@ func (tc *TriggerConfig) UnmarshalYAML(value *yaml.Node) error {
 // Job represents a single job definition within a workflow.
 type Job struct {
 	Name           string            `yaml:"name"`
+	If             interface{}       `yaml:"if"`
 	Uses           string            `yaml:"uses"`
 	Permissions    map[string]string `yaml:"-"`
 	PermissionsAll string            `yaml:"-"`
 	Environment    interface{}       `yaml:"environment"`
 	RunsOn         interface{}       `yaml:"runs-on"`
+	Secrets        interface{}       `yaml:"secrets"`
 	Steps          []Step            `yaml:"steps"`
 }
 
@@ -113,10 +115,12 @@ type Job struct {
 func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 	type rawJob struct {
 		Name        string                 `yaml:"name"`
+		If          interface{}            `yaml:"if"`
 		Uses        string                 `yaml:"uses"`
 		Permissions yaml.Node              `yaml:"permissions"`
 		Environment interface{}            `yaml:"environment"`
 		RunsOn      interface{}            `yaml:"runs-on"`
+		Secrets     interface{}            `yaml:"secrets"`
 		Steps       []Step                 `yaml:"steps"`
 	}
 
@@ -126,9 +130,11 @@ func (j *Job) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	j.Name = raw.Name
+	j.If = raw.If
 	j.Uses = raw.Uses
 	j.Environment = raw.Environment
 	j.RunsOn = raw.RunsOn
+	j.Secrets = raw.Secrets
 	j.Steps = raw.Steps
 
 	switch raw.Permissions.Kind {
@@ -235,3 +241,113 @@ func (s *Step) GetEnvString(key string) string {
 	}
 	return fmt.Sprintf("%v", val)
 }
+
+// GetIfString extracts the normalized string representation of a Job's 'if:' condition.
+func (j *Job) GetIfString() string {
+	if j == nil || j.If == nil {
+		return ""
+	}
+	switch v := j.If.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case bool:
+		return fmt.Sprintf("%t", v)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
+}
+
+// HasActorOrRepoGuard checks whether a job's if: condition contains actor, fork, or repository guard patterns.
+func (j *Job) HasActorOrRepoGuard() (bool, string) {
+	if j == nil {
+		return false, ""
+	}
+	cond := strings.ToLower(j.GetIfString())
+	if cond == "" {
+		return false, ""
+	}
+
+	guardPatterns := []struct {
+		pattern string
+		reason  string
+	}{
+		{"github.event.pull_request.user.login ==", "Actor check on pull_request user.login"},
+		{"github.actor ==", "Actor check on github.actor"},
+		{"github.triggering_actor ==", "Actor check on triggering_actor"},
+		{"github.repository ==", "Repository check on base repository"},
+		{".head.repo.full_name == github.repository", "Fork isolation check (internal branch only)"},
+		{"github.event.pull_request.head.repo.full_name ==", "Explicit head repo validation"},
+		{".head.repo.fork == false", "Non-fork PR validation"},
+		{"github.event.pull_request.head.repo.fork == false", "Non-fork PR validation"},
+	}
+
+	for _, g := range guardPatterns {
+		if strings.Contains(cond, g.pattern) {
+			return true, g.reason
+		}
+	}
+
+	return false, ""
+}
+
+// InheritsSecretsAll returns true if the job delegates all caller secrets via 'secrets: inherit'.
+func (j *Job) InheritsSecretsAll() bool {
+	if j == nil || j.Secrets == nil {
+		return false
+	}
+	if str, ok := j.Secrets.(string); ok {
+		return strings.ToLower(strings.TrimSpace(str)) == "inherit"
+	}
+	return false
+}
+
+// ChecksOutUntrustedForkRef checks whether any checkout step in the job explicitly checks out untrusted fork refs.
+func (j *Job) ChecksOutUntrustedForkRef() (bool, string) {
+	if j == nil {
+		return false, ""
+	}
+
+	untrustedRefPatterns := []string{
+		"github.event.pull_request.head.sha",
+		"github.event.pull_request.head.ref",
+		"github.head_ref",
+	}
+
+	for _, step := range j.Steps {
+		if strings.HasPrefix(step.Uses, "actions/checkout") {
+			ref := strings.ToLower(step.GetWithString("ref"))
+			for _, pat := range untrustedRefPatterns {
+				if strings.Contains(ref, pat) {
+					return true, pat
+				}
+			}
+		}
+	}
+	return false, ""
+}
+
+// HasUntrustedEventTrigger returns true if the workflow triggers on events that can be triggered by arbitrary external users.
+func (w *Workflow) HasUntrustedEventTrigger() bool {
+	if w == nil {
+		return false
+	}
+	untrustedEvents := map[string]bool{
+		"pull_request":        true,
+		"pull_request_target": true,
+		"issue_comment":       true,
+		"issues":              true,
+		"discussion":          true,
+		"discussion_comment":  true,
+		"pull_request_review": true,
+		"pull_request_review_comment": true,
+		"fork":                true,
+	}
+
+	for _, ev := range w.On.Events {
+		if untrustedEvents[strings.ToLower(ev)] {
+			return true
+		}
+	}
+	return false
+}
+

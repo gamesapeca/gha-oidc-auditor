@@ -453,3 +453,230 @@ func TestEngine_VulnerableAndSafeFixtures(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyzer_ContextualEnhancements(t *testing.T) {
+	engine := analyzer.NewDefaultEngine()
+
+	t.Run("OIDC-001 severity scaling with triggers", func(t *testing.T) {
+		pushYaml := `
+name: Push Only
+on: push
+permissions:
+  id-token: write
+jobs:
+  build:
+    steps: [{ run: echo 1 }]
+`
+		wfPush, _ := parser.ParseWorkflowBytes([]byte(pushYaml), "push.yml")
+		fPush := engine.AnalyzeWorkflow(wfPush)
+		if len(fPush) != 1 || fPush[0].Severity != analyzer.SeverityMedium {
+			t.Errorf("expected SeverityMedium for push-only OIDC-001, got %+v", fPush)
+		}
+
+		prYaml := `
+name: PR Workflow
+on: pull_request
+permissions:
+  id-token: write
+jobs:
+  build:
+    steps: [{ run: echo 1 }]
+`
+		wfPR, _ := parser.ParseWorkflowBytes([]byte(prYaml), "pr.yml")
+		fPR := engine.AnalyzeWorkflow(wfPR)
+		if len(fPR) != 1 || fPR[0].Severity != analyzer.SeverityHigh {
+			t.Errorf("expected SeverityHigh for PR-triggered OIDC-001, got %+v", fPR)
+		}
+	})
+
+	t.Run("OIDC-002 contextual evaluation matrix", func(t *testing.T) {
+		// 1. Direct fork checkout -> CRITICAL
+		critYaml := `
+name: PRT Critical
+on: pull_request_target
+jobs:
+  test:
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+`
+		wfCrit, _ := parser.ParseWorkflowBytes([]byte(critYaml), "crit.yml")
+		fCrit := engine.AnalyzeWorkflow(wfCrit)
+		var hasCrit bool
+		for _, f := range fCrit {
+			if f.RuleID == "OIDC-002" && f.Severity == analyzer.SeverityCritical {
+				hasCrit = true
+			}
+		}
+		if !hasCrit {
+			t.Errorf("expected Critical OIDC-002 for untrusted fork checkout, got %+v", fCrit)
+		}
+
+		// 2. Guarded with actor check -> MEDIUM
+		guardYaml := `
+name: PRT Guarded
+on: pull_request_target
+jobs:
+  test:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+`
+		wfGuard, _ := parser.ParseWorkflowBytes([]byte(guardYaml), "guard.yml")
+		fGuard := engine.AnalyzeWorkflow(wfGuard)
+		var hasGuard bool
+		for _, f := range fGuard {
+			if f.RuleID == "OIDC-002" && f.Severity == analyzer.SeverityMedium {
+				hasGuard = true
+			}
+		}
+		if !hasGuard {
+			t.Errorf("expected Medium OIDC-002 for actor-guarded PRT, got %+v", fGuard)
+		}
+
+		// 3. Ungated without guards -> HIGH
+		ungatedYaml := `
+name: PRT Ungated
+on: pull_request_target
+jobs:
+  test:
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+`
+		wfUngated, _ := parser.ParseWorkflowBytes([]byte(ungatedYaml), "ungated.yml")
+		fUngated := engine.AnalyzeWorkflow(wfUngated)
+		var hasUngated bool
+		for _, f := range fUngated {
+			if f.RuleID == "OIDC-002" && f.Severity == analyzer.SeverityHigh {
+				hasUngated = true
+			}
+		}
+		if !hasUngated {
+			t.Errorf("expected High OIDC-002 for ungated PRT, got %+v", fUngated)
+		}
+	})
+
+	t.Run("OIDC-003 step deduplication and SLSA recognition", func(t *testing.T) {
+		dupYaml := `
+name: Deduplication Test
+jobs:
+  deploy:
+    permissions:
+      id-token: write
+    steps:
+      - uses: azure/login@v3
+      - run: echo step2
+      - uses: azure/login@v3
+      - uses: azure/login@v3
+`
+		wfDup, _ := parser.ParseWorkflowBytes([]byte(dupYaml), "dup.yml")
+		fDup := engine.AnalyzeWorkflow(wfDup)
+		var oidc003Count int
+		for _, f := range fDup {
+			if f.RuleID == "OIDC-003" {
+				oidc003Count++
+			}
+		}
+		if oidc003Count != 1 {
+			t.Errorf("expected exactly 1 deduplicated OIDC-003 finding, got %d", oidc003Count)
+		}
+
+		// SLSA Generator semantic version tag -> Recognized as conforming
+		slsaYaml := `
+name: SLSA Release
+jobs:
+  provenance:
+    permissions:
+      id-token: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+`
+		wfSLSA, _ := parser.ParseWorkflowBytes([]byte(slsaYaml), "slsa.yml")
+		fSLSA := engine.AnalyzeWorkflow(wfSLSA)
+		for _, f := range fSLSA {
+			if f.RuleID == "OIDC-003" {
+				t.Errorf("unexpected OIDC-003 for SLSA generator semantic tag: %+v", f)
+			}
+		}
+	})
+
+	t.Run("OIDC-004 source-aware severity categorization", func(t *testing.T) {
+		extYaml := `
+name: Ext Injection
+jobs:
+  test:
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "${{ github.event.issue.title }}"
+`
+		wfExt, _ := parser.ParseWorkflowBytes([]byte(extYaml), "ext.yml")
+		fExt := engine.AnalyzeWorkflow(wfExt)
+		if len(fExt) != 1 || fExt[0].Severity != analyzer.SeverityCritical {
+			t.Errorf("expected Critical for external issue.title injection, got %+v", fExt)
+		}
+
+		inputYaml := `
+name: Input Injection
+jobs:
+  test:
+    permissions:
+      id-token: write
+    steps:
+      - run: echo "${{ inputs.version }}"
+`
+		wfInput, _ := parser.ParseWorkflowBytes([]byte(inputYaml), "input.yml")
+		fInput := engine.AnalyzeWorkflow(wfInput)
+		if len(fInput) != 1 || fInput[0].Severity != analyzer.SeverityMedium {
+			t.Errorf("expected Medium for inputs parameter interpolation, got %+v", fInput)
+		}
+	})
+
+	t.Run("OIDC-008 secrets: inherit with external reusable workflow", func(t *testing.T) {
+		extSecretsYaml := `
+name: External Secrets Leak
+jobs:
+  call-ext:
+    permissions:
+      id-token: write
+    uses: untrusted-org/workflows/.github/workflows/deploy.yml@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+    secrets: inherit
+`
+		wfExt, _ := parser.ParseWorkflowBytes([]byte(extSecretsYaml), "ext_sec.yml")
+		fExt := engine.AnalyzeWorkflow(wfExt)
+		var has008 bool
+		for _, f := range fExt {
+			if f.RuleID == "OIDC-008" && f.Severity == analyzer.SeverityHigh {
+				has008 = true
+			}
+		}
+		if !has008 {
+			t.Errorf("expected OIDC-008 for external reusable workflow with secrets: inherit, got %+v", fExt)
+		}
+
+		// Local reusable workflow with secrets: inherit -> Safe from OIDC-008
+		localSecretsYaml := `
+name: Local Secrets Delegation
+jobs:
+  call-local:
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/local-deploy.yml
+    secrets: inherit
+`
+		wfLocal, _ := parser.ParseWorkflowBytes([]byte(localSecretsYaml), "local_sec.yml")
+		fLocal := engine.AnalyzeWorkflow(wfLocal)
+		for _, f := range fLocal {
+			if f.RuleID == "OIDC-008" {
+				t.Errorf("unexpected OIDC-008 for local reusable workflow with secrets: inherit")
+			}
+		}
+	})
+}
+

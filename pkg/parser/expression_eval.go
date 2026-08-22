@@ -91,3 +91,13 @@ func ExtractExpressions(content string) []string {
 	}
 	return results
 }
+
+// IsExternalAttackerPayload returns true if the context variable is an externally-controllable event payload (issue, PR, comment, head_ref).
+func IsExternalAttackerPayload(contextVar string) bool {
+	norm := strings.ToLower(contextVar)
+	if strings.HasPrefix(norm, "inputs.") || strings.HasPrefix(norm, "github.event.inputs.") {
+		return false
+	}
+	return true
+}
+

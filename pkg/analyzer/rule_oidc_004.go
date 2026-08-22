@@ -35,15 +35,30 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 		for idx, step := range job.Steps {
 			if step.Run != "" {
 				if hasVulnerableContext, contextVar := parser.ContainsUntrustedContext(step.Run); hasVulnerableContext {
+					isExternal := parser.IsExternalAttackerPayload(contextVar)
+					var severity Severity
+					var title string
+					var desc string
+
+					if isExternal {
+						severity = SeverityCritical
+						title = fmt.Sprintf("CRITICAL: Context Injection via '%s' in OIDC Job '%s'", contextVar, jobName)
+						desc = fmt.Sprintf("Step #%d interpolates externally-controllable context variable '%s' directly into a shell command in an OIDC-privileged job. Attackers can achieve Remote Code Execution and exfiltrate runner OIDC credentials.", idx+1, contextVar)
+					} else {
+						severity = SeverityMedium
+						title = fmt.Sprintf("Input Parameter Interpolation via '%s' in OIDC Job '%s'", contextVar, jobName)
+						desc = fmt.Sprintf("Step #%d interpolates input parameter '%s' directly into a shell command in an OIDC-privileged job. Direct interpolation into shell script bodies is an antipattern vulnerable to command injection if callers pass unsanitized arguments.", idx+1, contextVar)
+					}
+
 					findings = append(findings, Finding{
 						RuleID:       r.ID(),
-						Title:        fmt.Sprintf("Context Injection via '%s' in OIDC Job '%s'", contextVar, jobName),
-						Severity:     r.DefaultSeverity(),
+						Title:        title,
+						Severity:     severity,
 						WorkflowPath: wf.Path,
 						JobName:      jobName,
 						StepIndex:    idx + 1,
-						Description:  fmt.Sprintf("Step #%d interpolates untrusted context variable '%s' directly into a shell command in an OIDC-privileged job. Attackers can achieve RCE and exfiltrate runner OIDC credentials.", idx+1, contextVar),
-						Remediation:  "Do not interpolate ${{ }} directly into shell script bodies. Pass context values safely via environment variables in 'env:'.",
+						Description:  desc,
+						Remediation:  "Do not interpolate ${{ }} directly into shell script bodies. Pass context and input values safely via environment variables in 'env:'.",
 					})
 				}
 			}
