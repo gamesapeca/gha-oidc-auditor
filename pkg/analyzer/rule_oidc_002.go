@@ -53,6 +53,8 @@ func (r *RuleOIDC002TriggerPRT) Check(wf *parser.Workflow) []Finding {
 				findings = append(findings, Finding{
 					RuleID:       r.ID(),
 					Title:        fmt.Sprintf("CRITICAL: pull_request_target with Untrusted Code Checkout in OIDC Job '%s'", jobName),
+					Category:     "Privilege Escalation",
+					CWE:          "CWE-269",
 					Severity:     SeverityCritical,
 					WorkflowPath: wf.Path,
 					JobName:      jobName,
@@ -63,6 +65,8 @@ func (r *RuleOIDC002TriggerPRT) Check(wf *parser.Workflow) []Finding {
 				findings = append(findings, Finding{
 					RuleID:       r.ID(),
 					Title:        fmt.Sprintf("Ungated pull_request_target with OIDC Token in Job '%s'", jobName),
+					Category:     "Privilege Escalation",
+					CWE:          "CWE-269",
 					Severity:     SeverityHigh,
 					WorkflowPath: wf.Path,
 					JobName:      jobName,
@@ -73,6 +77,8 @@ func (r *RuleOIDC002TriggerPRT) Check(wf *parser.Workflow) []Finding {
 				findings = append(findings, Finding{
 					RuleID:       r.ID(),
 					Title:        fmt.Sprintf("Guarded pull_request_target with OIDC Token in Job '%s'", jobName),
+					Category:     "Privilege Escalation",
+					CWE:          "CWE-269",
 					Severity:     SeverityMedium,
 					WorkflowPath: wf.Path,
 					JobName:      jobName,
@@ -80,6 +86,7 @@ func (r *RuleOIDC002TriggerPRT) Check(wf *parser.Workflow) []Finding {
 					Remediation:  "Migrate to environment approval gates for cloud deployment jobs rather than software if: conditions.",
 				})
 			}
+
 		}
 	}
 

@@ -71,6 +71,8 @@ func (r *RuleOIDC006TriggerWorkflowRun) Check(wf *parser.Workflow) []Finding {
 			findings = append(findings, Finding{
 				RuleID:       r.ID(),
 				Title:        fmt.Sprintf("workflow_run without Branch Filter in OIDC Workflow (Job '%s')", jobName),
+				Category:     "Artifact Integrity",
+				CWE:          "CWE-494",
 				Severity:     r.DefaultSeverity(),
 				WorkflowPath: wf.Path,
 				JobName:      jobName,
@@ -78,6 +80,7 @@ func (r *RuleOIDC006TriggerWorkflowRun) Check(wf *parser.Workflow) []Finding {
 				Remediation:  "Add 'branches: [main]' under 'workflow_run' and assert 'github.event.workflow_run.head_branch == main' prior to performing cloud actions.",
 			})
 		}
+
 	}
 
 	return findings

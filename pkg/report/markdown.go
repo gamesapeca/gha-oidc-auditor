@@ -32,6 +32,12 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 	} else {
 		for i, f := range report.Findings {
 			sb.WriteString(fmt.Sprintf("### %d. [%s] %s\n\n", i+1, f.RuleID, f.Title))
+			if f.Category != "" {
+				sb.WriteString(fmt.Sprintf("- **Category:** `%s`\n", f.Category))
+			}
+			if f.CWE != "" {
+				sb.WriteString(fmt.Sprintf("- **CWE:** `%s`\n", f.CWE))
+			}
 			sb.WriteString(fmt.Sprintf("- **Severity:** `%s`\n", f.Severity))
 			sb.WriteString(fmt.Sprintf("- **Workflow:** `%s`\n", f.WorkflowPath))
 			sb.WriteString(fmt.Sprintf("- **Job:** `%s`\n", f.JobName))
@@ -42,6 +48,7 @@ func ExportMarkdown(report *analyzer.AuditReport, generatedPolicies map[string]s
 			sb.WriteString(fmt.Sprintf("- **Remediation:** %s\n\n", f.Remediation))
 			sb.WriteString("---\n\n")
 		}
+
 	}
 
 	if len(report.ExploitChains) > 0 {

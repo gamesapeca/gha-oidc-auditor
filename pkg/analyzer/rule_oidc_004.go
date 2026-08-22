@@ -55,6 +55,8 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 					findings = append(findings, Finding{
 						RuleID:       r.ID(),
 						Title:        title,
+						Category:     "Command Injection",
+						CWE:          "CWE-78",
 						Severity:     severity,
 						WorkflowPath: wf.Path,
 						JobName:      jobName,
@@ -74,6 +76,8 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 								findings = append(findings, Finding{
 									RuleID:       r.ID(),
 									Title:        fmt.Sprintf("Context Injection in Composite Action '%s' (Step #%d)", comp.Name, subIdx+1),
+									Category:     "Command Injection",
+									CWE:          "CWE-78",
 									Severity:     SeverityHigh,
 									WorkflowPath: comp.Path,
 									JobName:      jobName,
@@ -86,6 +90,7 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 					}
 				}
 			}
+
 		}
 	}
 

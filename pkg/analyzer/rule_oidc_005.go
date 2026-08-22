@@ -43,6 +43,8 @@ func (r *RuleOIDC005MultiCloudScope) Check(wf *parser.Workflow) []Finding {
 			findings = append(findings, Finding{
 				RuleID:       r.ID(),
 				Title:        fmt.Sprintf("Multiple Cloud Providers Authenticated in Single Job '%s'", jobName),
+				Category:     "Information Disclosure",
+				CWE:          "CWE-200",
 				Severity:     r.DefaultSeverity(),
 				WorkflowPath: wf.Path,
 				JobName:      jobName,
@@ -50,6 +52,7 @@ func (r *RuleOIDC005MultiCloudScope) Check(wf *parser.Workflow) []Finding {
 				Remediation:  "Segment cloud authentication into dedicated, isolated jobs following the principle of least privilege.",
 			})
 		}
+
 	}
 
 	return findings

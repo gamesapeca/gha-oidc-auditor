@@ -47,12 +47,15 @@ func (r *RuleOIDC001Global) Check(wf *parser.Workflow) []Finding {
 		findings = append(findings, Finding{
 			RuleID:       r.ID(),
 			Title:        "Global id-token: write Permission Detected",
+			Category:     "Privilege Management",
+			CWE:          "CWE-250",
 			Severity:     severity,
 			WorkflowPath: wf.Path,
 			JobName:      "*",
 			Description:  desc,
 			Remediation:  "Remove root-level 'id-token: write' and declare permissions explicitly within the specific deployment job.",
 		})
+
 	}
 
 	return findings

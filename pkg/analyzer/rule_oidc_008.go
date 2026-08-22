@@ -41,12 +41,15 @@ func (r *RuleOIDC008SecretsInherit) Check(wf *parser.Workflow) []Finding {
 				findings = append(findings, Finding{
 					RuleID:       r.ID(),
 					Title:        fmt.Sprintf("External Reusable Workflow with 'secrets: inherit' in Job '%s'", jobName),
+					Category:     "Credential Management",
+					CWE:          "CWE-522",
 					Severity:     r.DefaultSeverity(),
 					WorkflowPath: wf.Path,
 					JobName:      jobName,
 					Description:  fmt.Sprintf("Job '%s' holds 'id-token: write' permissions and calls external reusable workflow '%s' with 'secrets: inherit'. This exposes all repository secrets to an external caller context.", jobName, job.Uses),
 					Remediation:  "Avoid 'secrets: inherit' with third-party reusable workflows. Pass only the specific required secrets explicitly.",
 				})
+
 			}
 		}
 	}

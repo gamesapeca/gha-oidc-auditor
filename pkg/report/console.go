@@ -71,11 +71,16 @@ func RenderConsole(w io.Writer, report *analyzer.AuditReport) {
 				location = fmt.Sprintf("%s - Step #%d", location, f.StepIndex)
 			}
 
-			fmt.Fprintf(w, "%d. %s %s - %s\n", i+1, sevBadge, color.CyanString(f.RuleID), f.Title)
+			if f.CWE != "" {
+				fmt.Fprintf(w, "%d. %s %s [%s] - %s\n", i+1, sevBadge, color.CyanString(f.RuleID), f.CWE, f.Title)
+			} else {
+				fmt.Fprintf(w, "%d. %s %s - %s\n", i+1, sevBadge, color.CyanString(f.RuleID), f.Title)
+			}
 			fmt.Fprintf(w, "   Location:    %s\n", location)
 			fmt.Fprintf(w, "   Description: %s\n", f.Description)
 			fmt.Fprintf(w, "   Remediation: %s\n", green(f.Remediation))
 			fmt.Fprintln(w, strings.Repeat("-", 80))
+
 		}
 		fmt.Fprintln(w)
 	}

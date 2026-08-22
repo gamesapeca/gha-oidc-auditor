@@ -50,6 +50,8 @@ type ExploitChain struct {
 type Finding struct {
 	RuleID       string        `json:"rule_id"`
 	Title        string        `json:"title"`
+	Category     string        `json:"category"`
+	CWE          string        `json:"cwe"`
 	Severity     Severity      `json:"severity"`
 	WorkflowPath string        `json:"workflow_path"`
 	JobName      string        `json:"job_name"`
@@ -59,6 +61,7 @@ type Finding struct {
 	Remediation  string        `json:"remediation"`
 	LineNumber   int           `json:"line_number,omitempty"`
 }
+
 
 // AuditReport aggregates scan results, findings, and summary statistics.
 type AuditReport struct {

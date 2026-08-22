@@ -65,6 +65,8 @@ func (r *RuleOIDC003ActionPinning) Check(wf *parser.Workflow) []Finding {
 			findings = append(findings, Finding{
 				RuleID:       r.ID(),
 				Title:        fmt.Sprintf("Mutable Reusable Workflow Reference in Job '%s'", jobName),
+				Category:     "Supply Chain Integrity",
+				CWE:          "CWE-829",
 				Severity:     r.DefaultSeverity(),
 				WorkflowPath: wf.Path,
 				JobName:      jobName,
@@ -103,6 +105,8 @@ func (r *RuleOIDC003ActionPinning) Check(wf *parser.Workflow) []Finding {
 			findings = append(findings, Finding{
 				RuleID:       r.ID(),
 				Title:        fmt.Sprintf("Unpinned Action '%s' in OIDC Job '%s'", actionRef, jobName),
+				Category:     "Supply Chain Integrity",
+				CWE:          "CWE-829",
 				Severity:     r.DefaultSeverity(),
 				WorkflowPath: wf.Path,
 				JobName:      jobName,
@@ -111,6 +115,7 @@ func (r *RuleOIDC003ActionPinning) Check(wf *parser.Workflow) []Finding {
 				Remediation:  "Pin all actions to immutable 40-character commit SHAs instead of release tags.",
 			})
 		}
+
 	}
 
 	return findings

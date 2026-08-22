@@ -36,6 +36,8 @@ func (r *RuleOIDC007SelfHosted) Check(wf *parser.Workflow) []Finding {
 			findings = append(findings, Finding{
 				RuleID:       r.ID(),
 				Title:        fmt.Sprintf("Self-Hosted Runner Used in OIDC Privileged Job '%s'", jobName),
+				Category:     "Access Control",
+				CWE:          "CWE-284",
 				Severity:     r.DefaultSeverity(),
 				WorkflowPath: wf.Path,
 				JobName:      jobName,
@@ -43,6 +45,7 @@ func (r *RuleOIDC007SelfHosted) Check(wf *parser.Workflow) []Finding {
 				Remediation:  "Run OIDC deployment jobs strictly on ephemeral GitHub-hosted runners (e.g. 'runs-on: ubuntu-latest') or strictly ephemeral container runners (Actions Runner Controller).",
 			})
 		}
+
 	}
 
 	return findings
