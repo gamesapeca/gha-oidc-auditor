@@ -3,10 +3,23 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/gamesapeca/gha-oidc-auditor.svg)](https://pkg.go.dev/github.com/gamesapeca/gha-oidc-auditor)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gamesapeca/gha-oidc-auditor)](https://goreportcard.com/report/github.com/gamesapeca/gha-oidc-auditor)
+[![CI](https://github.com/gamesapeca/gha-oidc-auditor/actions/workflows/ci.yml/badge.svg)](https://github.com/gamesapeca/gha-oidc-auditor/actions/workflows/ci.yml)
 
 Static security analyzer and least-privilege cloud trust policy engine for GitHub Actions OIDC workflows.
 
-`gha-oidc-auditor` scans workflow ASTs to detect supply-chain vulnerabilities, permission leaks, and untrusted execution paths that expose ephemeral OIDC tokens (`id-token: write`). It also synthesizes minimal-privilege Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, and Azure Entra ID based on parsed workflow triggers and environments.
+## Why This Project Exists
+
+Modern cloud security standards (OpenSSF, CIS Benchmarks, AWS/GCP best practices) strongly advise replacing long-lived static credentials (`AWS_ACCESS_KEY_ID`, service account JSON keys) with **OpenID Connect (OIDC)** ephemeral authentication.
+
+However, adopting OIDC shifts the security perimeter from credential storage to **workflow configuration integrity**:
+
+* **OIDC Tokens Are Minted on Demand**: When a job requests `id-token: write`, GitHub's OIDC provider (`token.actions.githubusercontent.com`) issues a signed JWT containing runner claims (`sub`, `aud`, `repository`, `ref`, `environment`).
+* **Supply Chain & Injection Attacks Steal Cloud Sessions**: If an OIDC-privileged job runs an unpinned action (`actions/checkout@v4`) or interpolates untrusted user data (`${{ github.event.issue.title }}`), attackers can achieve Remote Code Execution (RCE) inside the runner and exfiltrate short-lived cloud credentials directly from memory.
+* **Overprivileged Trust Policies Grant Organization-Wide Access**: Cloud administrators frequently configure wildcard trust policies (`repo:my-org/*`), allowing any developer or compromised repository in the organization to assume production deployment roles.
+
+`gha-oidc-auditor` was created to solve these challenges by providing:
+1. **Deterministic Static Analysis**: Deep AST parsing of GitHub Actions workflows to identify OIDC privilege leaks, injection sinks, and insecure trigger combinations before they reach production.
+2. **Automated Least-Privilege Policy Synthesis**: Mathematical generation of strict Cloud Trust Policies for AWS IAM, GCP Workload Identity Federation, and Azure Entra ID scoped strictly to verified branches and environment approval gates.
 
 ## Threat Model
 
