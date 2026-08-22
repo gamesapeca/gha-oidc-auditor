@@ -2,9 +2,11 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
 )
+
 
 // RuleOIDC004ContextInjection detects untrusted context interpolation inside 'run:' steps within OIDC-privileged jobs.
 type RuleOIDC004ContextInjection struct{}
@@ -62,8 +64,31 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 					})
 				}
 			}
+
+			// Deep inspection of local composite actions
+			if strings.HasPrefix(step.Uses, "./") || strings.HasPrefix(step.Uses, ".\\") {
+				if comp, err := parser.ResolveLocalCompositeAction(".", step.Uses); err == nil && comp != nil {
+					for subIdx, subStep := range comp.Runs.Steps {
+						if subStep.Run != "" {
+							if hasVuln, contextVar := parser.ContainsUntrustedContext(subStep.Run); hasVuln {
+								findings = append(findings, Finding{
+									RuleID:       r.ID(),
+									Title:        fmt.Sprintf("Context Injection in Composite Action '%s' (Step #%d)", comp.Name, subIdx+1),
+									Severity:     SeverityHigh,
+									WorkflowPath: comp.Path,
+									JobName:      jobName,
+									StepIndex:    idx + 1,
+									Description:  fmt.Sprintf("Local composite action '%s' invoked by job '%s' interpolates untrusted context variable '%s' in internal step #%d.", step.Uses, jobName, contextVar, subIdx+1),
+									Remediation:  "Pass inputs and context variables through 'env:' inside the composite action action.yml.",
+								})
+							}
+						}
+					}
+				}
+			}
 		}
 	}
+
 
 	return findings
 }

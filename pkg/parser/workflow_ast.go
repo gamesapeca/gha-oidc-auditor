@@ -262,33 +262,9 @@ func (j *Job) HasActorOrRepoGuard() (bool, string) {
 	if j == nil {
 		return false, ""
 	}
-	cond := strings.ToLower(j.GetIfString())
-	if cond == "" {
-		return false, ""
-	}
-
-	guardPatterns := []struct {
-		pattern string
-		reason  string
-	}{
-		{"github.event.pull_request.user.login ==", "Actor check on pull_request user.login"},
-		{"github.actor ==", "Actor check on github.actor"},
-		{"github.triggering_actor ==", "Actor check on triggering_actor"},
-		{"github.repository ==", "Repository check on base repository"},
-		{".head.repo.full_name == github.repository", "Fork isolation check (internal branch only)"},
-		{"github.event.pull_request.head.repo.full_name ==", "Explicit head repo validation"},
-		{".head.repo.fork == false", "Non-fork PR validation"},
-		{"github.event.pull_request.head.repo.fork == false", "Non-fork PR validation"},
-	}
-
-	for _, g := range guardPatterns {
-		if strings.Contains(cond, g.pattern) {
-			return true, g.reason
-		}
-	}
-
-	return false, ""
+	return EvaluateConditionGuards(j.GetIfString())
 }
+
 
 // InheritsSecretsAll returns true if the job delegates all caller secrets via 'secrets: inherit'.
 func (j *Job) InheritsSecretsAll() bool {
