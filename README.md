@@ -318,6 +318,39 @@ jobs:
           fail-on: critical
 ```
 
+#### GitHub Code Scanning (SARIF) Integration
+Export results directly into GitHub's Security tab using official SARIF v2.1.0 output:
+
+```yaml
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Run GHA OIDC Security Audit (SARIF)
+        run: |
+          go run ./cmd/gha-oidc --path .github/workflows --format sarif --output results.sarif --fail-on none
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+```
+
 ## Flags Reference
 
 | Flag | Shorthand | Default | Description |
@@ -326,7 +359,8 @@ jobs:
 | `--repo` | `-r` | `""` | Remote GitHub repository (`owner/repo`) |
 | `--org` | `-o` | `""` | GitHub organization name |
 | `--token` | `-t` | `$GITHUB_TOKEN` | GitHub API Personal Access Token |
-| `--format` | `-f` | `console` | Output format (`console`, `json`, `markdown`, `hcl`) |
+| `--format` | `-f` | `console` | Output format (`console`, `json`, `sarif`, `markdown`, `hcl`) |
+| `--concurrency` | `-c` | `runtime.NumCPU()` | Parallel workers for multi-workflow / multi-repo analysis |
 | `--fail-on` | | `critical` | Exit threshold (`critical`, `high`, `medium`, `all`, `none`) |
 | `--generate-policies` | | `false` | Synthesize least-privilege cloud trust policies (JSON) |
 | `--generate-hcl` | | `false` | Synthesize Remediation-as-Code Terraform / OpenTofu HCL modules |
