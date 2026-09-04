@@ -33,7 +33,7 @@ var (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:     "gha-oidc",
-		Version: "0.2.0",
+		Version: "1.1.0",
 		Short:   "Security static analyzer, least-privilege cloud trust policy & IaC generator for GitHub Actions OIDC",
 		Long: `gha-oidc-auditor is an enterprise static security analysis engine for GitHub Actions workflows.
 It detects supply-chain and privilege escalation risks in ephemeral OIDC token lifecycles (id-token: write),

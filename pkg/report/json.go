@@ -35,7 +35,7 @@ func ExportFullJSON(report *analyzer.AuditReport, policies map[string]string, hc
 	}
 
 	doc := MachineReport{
-		Version:             "0.2.0",
+		Version:             "1.1.0",
 		Target:              target,
 		Timestamp:           time.Now().UTC().Format(time.RFC3339),
 		DurationMs:          durationMs,

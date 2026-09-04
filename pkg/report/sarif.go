@@ -223,7 +223,7 @@ func ExportSARIF(auditReport *analyzer.AuditReport) (string, error) {
 				Tool: SARIFTool{
 					Driver: SARIFDriver{
 						Name:            "gha-oidc-auditor",
-						SemanticVersion: "0.2.0",
+						SemanticVersion: "1.1.0",
 						InformationURI:  "https://github.com/gamesapeca/gha-oidc-auditor",
 						Rules:           rules,
 					},
