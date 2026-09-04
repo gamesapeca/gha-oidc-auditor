@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
@@ -77,7 +78,17 @@ func (r *RuleOIDC004ContextInjection) Check(wf *parser.Workflow) []Finding {
 
 			// Deep inspection of local composite actions
 			if strings.HasPrefix(step.Uses, "./") || strings.HasPrefix(step.Uses, ".\\") {
-				if comp, err := parser.ResolveLocalCompositeAction(".", step.Uses); err == nil && comp != nil {
+				repoRoot := "."
+				if wf.Path != "" {
+					dir := filepath.Dir(wf.Path)
+					for cur := dir; cur != "" && cur != filepath.Dir(cur); cur = filepath.Dir(cur) {
+						if filepath.Base(cur) == ".github" {
+							repoRoot = filepath.Dir(cur)
+							break
+						}
+					}
+				}
+				if comp, err := parser.ResolveLocalCompositeAction(repoRoot, step.Uses); err == nil && comp != nil {
 					for subIdx, subStep := range comp.Runs.Steps {
 						if subStep.Run != "" {
 							if hasVuln, contextVar := parser.ContainsUntrustedContext(subStep.Run); hasVuln {

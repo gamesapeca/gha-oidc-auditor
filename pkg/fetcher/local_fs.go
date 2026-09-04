@@ -49,6 +49,10 @@ func ScanLocalPath(targetPath string) ([]*parser.Workflow, error) {
 			return err
 		}
 		if d.IsDir() {
+			name := d.Name()
+			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".venv" || name == "venv" || name == "dist" || name == "build" || name == "target" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -57,7 +61,7 @@ func ScanLocalPath(targetPath string) ([]*parser.Workflow, error) {
 			fileInfo, statErr := os.Stat(path)
 			if statErr == nil && !fileInfo.IsDir() && fileInfo.Size() <= MaxWorkflowFileSize {
 				wf, parseErr := parser.ParseWorkflowFile(path)
-				if parseErr == nil && wf != nil {
+				if parseErr == nil && wf != nil && (len(wf.Jobs) > 0 || len(wf.On.Events) > 0) {
 					workflows = append(workflows, wf)
 				}
 			}
