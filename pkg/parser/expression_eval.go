@@ -61,7 +61,7 @@ var UntrustedContexts = []string{
 }
 
 var (
-	// ExprRegex matches any ${{ ... }} expression, including multiline expressions.
+	// ExprRegex is preserved for backwards compatibility with external callers.
 	ExprRegex = regexp.MustCompile(`\$\{\{((?s:.)*?)\}\}`)
 
 	// bracketIndexRegex matches ['property'] or ["property"] index expressions
@@ -80,40 +80,61 @@ func NormalizeExpression(expr string) string {
 }
 
 // ContainsUntrustedContext checks whether a shell run block contains inline untrusted context interpolation.
-// Handles case-insensitive expressions, bracket indexing, and nested functions (e.g. format, toJSON).
+// It parses extracted ${{ ... }} expressions into a concrete AST (via Lexer and ExpressionParser) and traverses
+// member/index access chains. String literals (e.g. 'github.event.issue.title') are formally excluded to prevent
+// false positives.
 func ContainsUntrustedContext(runBlock string) (bool, string) {
 	if runBlock == "" {
 		return false, ""
 	}
 
-	matches := ExprRegex.FindAllStringSubmatch(runBlock, -1)
-	for _, match := range matches {
-		if len(match) > 1 {
-			normalized := NormalizeExpression(match[1])
+	expressions := ExtractExpressions(runBlock)
+	for _, rawExpr := range expressions {
+		astNode, err := ParseExpression(rawExpr)
+		if err != nil {
+			// Fallback to normalized substring inspection on syntax error
+			normalized := NormalizeExpression(rawExpr)
 			for _, untrusted := range UntrustedContexts {
 				if strings.Contains(normalized, untrusted) {
 					return true, untrusted
 				}
 			}
+			continue
+		}
+
+		var matchedUntrusted string
+		found := false
+
+		WalkAST(astNode, func(n Node) bool {
+			if found {
+				return false
+			}
+
+			// Do not flag string literals
+			if _, isString := n.(*StringLiteralNode); isString {
+				return false
+			}
+
+			// Check if this node resolves to an untrusted context path
+			path, ok := ResolveContextPath(n)
+			if ok && path != "" {
+				for _, untrusted := range UntrustedContexts {
+					if path == untrusted || strings.HasPrefix(path, untrusted) || strings.Contains(path, untrusted) {
+						found = true
+						matchedUntrusted = untrusted
+						return false
+					}
+				}
+			}
+			return true
+		})
+
+		if found {
+			return true, matchedUntrusted
 		}
 	}
+
 	return false, ""
-}
-
-// ExtractExpressions extracts all interpolated expressions from a given block of text.
-func ExtractExpressions(content string) []string {
-	if content == "" {
-		return nil
-	}
-
-	var results []string
-	matches := ExprRegex.FindAllStringSubmatch(content, -1)
-	for _, match := range matches {
-		if len(match) > 1 {
-			results = append(results, strings.TrimSpace(match[1]))
-		}
-	}
-	return results
 }
 
 // IsExternalAttackerPayload returns true if the context variable is an externally-controllable event payload (issue, PR, comment, head_ref).
