@@ -135,3 +135,69 @@ func TestExportFullJSON_OutputStructure(t *testing.T) {
 		t.Errorf("Expected synthesized HCL in JSON output")
 	}
 }
+
+func TestExportJSONLines_NDJSON(t *testing.T) {
+	rep := analyzer.NewAuditReport("owner/repo")
+	rep.AddFinding(analyzer.Finding{
+		RuleID:       "OIDC-001",
+		Title:        "Untrusted Context Injection in Run",
+		Category:     "Injection",
+		CWE:          "CWE-78",
+		Severity:     analyzer.SeverityCritical,
+		WorkflowPath: ".github/workflows/deploy.yml",
+		JobName:      "deploy",
+		LineNumber:   42,
+		Description:  "Untrusted github.event.issue.title injected into shell step",
+		Remediation:  "Pass context via env: block instead of inline interpolation",
+	})
+	rep.AddExploitChain(analyzer.ExploitChain{
+		ID:            "CHAIN-001",
+		Title:         "PRT OIDC Cloud Takeover",
+		Category:      "Privilege Escalation",
+		CWE:           "CWE-269",
+		Severity:      analyzer.SeverityCritical,
+		WorkflowPath:  ".github/workflows/deploy.yml",
+		JobName:       "deploy",
+		TriggerEvent:  "pull_request_target",
+		IngressVector: "untrusted checkout",
+		TargetCloud:   analyzer.ProviderAWS,
+	})
+
+	out, err := report.ExportJSONLines(rep, "owner/repo")
+	if err != nil {
+		t.Fatalf("ExportJSONLines failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("Expected 3 NDJSON lines (summary, finding, exploit_chain), got %d: %q", len(lines), out)
+	}
+
+	for idx, line := range lines {
+		var rec report.JSONLineRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("Line %d is not valid JSON: %v. Content: %s", idx, err, line)
+		}
+		if rec.Target != "owner/repo" {
+			t.Errorf("Line %d expected target 'owner/repo', got '%s'", idx, rec.Target)
+		}
+		if rec.Timestamp == "" {
+			t.Errorf("Line %d expected non-empty timestamp", idx)
+		}
+	}
+
+	var rec0, rec1, rec2 report.JSONLineRecord
+	_ = json.Unmarshal([]byte(lines[0]), &rec0)
+	_ = json.Unmarshal([]byte(lines[1]), &rec1)
+	_ = json.Unmarshal([]byte(lines[2]), &rec2)
+
+	if rec0.RecordType != "summary" {
+		t.Errorf("Line 0 expected record_type 'summary', got '%s'", rec0.RecordType)
+	}
+	if rec1.RecordType != "finding" {
+		t.Errorf("Line 1 expected record_type 'finding', got '%s'", rec1.RecordType)
+	}
+	if rec2.RecordType != "exploit_chain" {
+		t.Errorf("Line 2 expected record_type 'exploit_chain', got '%s'", rec2.RecordType)
+	}
+}

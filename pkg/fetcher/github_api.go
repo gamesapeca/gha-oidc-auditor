@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gamesapeca/gha-oidc-auditor/pkg/parser"
@@ -135,7 +136,14 @@ func (f *GitHubFetcher) FetchRepoWorkflows(ctx context.Context, owner, repo stri
 
 // FetchOrgWorkflows scans all active repositories within an organization and fetches their workflows.
 func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[string][]*parser.Workflow, error) {
-	results := make(map[string][]*parser.Workflow)
+	return f.FetchOrgWorkflowsConcurrently(ctx, org, 5)
+}
+
+// FetchOrgWorkflowsConcurrently scans all active repositories within an organization using bounded parallelism.
+func (f *GitHubFetcher) FetchOrgWorkflowsConcurrently(ctx context.Context, org string, maxConcurrency int) (map[string][]*parser.Workflow, error) {
+	if maxConcurrency <= 0 {
+		maxConcurrency = 5
+	}
 
 	opts := &github.RepositoryListByOrgOptions{
 		Type: "all",
@@ -145,6 +153,7 @@ func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[
 		},
 	}
 
+	var allRepos []*github.Repository
 	for {
 		repos, err := ExecuteWithRetry(ctx, func() ([]*github.Repository, *github.Response, error) {
 			repos, resp, err := f.client.Repositories.ListByOrg(ctx, org, opts)
@@ -155,16 +164,10 @@ func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[
 			return nil, fmt.Errorf("failed to list organization repositories for %s: %w", org, err)
 		}
 
-		for _, repo := range repos {
-			if repo.GetArchived() {
-				continue
+		for _, r := range repos {
+			if !r.GetArchived() {
+				allRepos = append(allRepos, r)
 			}
-			repoName := repo.GetName()
-			wfs, err := f.FetchRepoWorkflows(ctx, org, repoName)
-			if err == nil && len(wfs) > 0 {
-				results[repoName] = wfs
-			}
-			time.Sleep(100 * time.Millisecond)
 		}
 
 		if len(repos) < opts.PerPage {
@@ -173,5 +176,35 @@ func (f *GitHubFetcher) FetchOrgWorkflows(ctx context.Context, org string) (map[
 		opts.Page++
 	}
 
+	results := make(map[string][]*parser.Workflow)
+	var mu sync.Mutex
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for _, repo := range allRepos {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case sem <- struct{}{}:
+		}
+
+		wg.Add(1)
+		go func(r *github.Repository) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+
+			repoName := r.GetName()
+			wfs, err := f.FetchRepoWorkflows(ctx, org, repoName)
+			if err == nil && len(wfs) > 0 {
+				mu.Lock()
+				results[repoName] = wfs
+				mu.Unlock()
+			}
+		}(repo)
+	}
+
+	wg.Wait()
 	return results, nil
 }

@@ -16,7 +16,7 @@ type Config struct {
 	Concurrency int    `json:"concurrency,omitempty"`
 
 	// Output & Formatting
-	Format        string `json:"format,omitempty"` // console, json, sarif, markdown, hcl
+	Format        string `json:"format,omitempty"` // console, json, jsonl, ndjson, sarif, markdown, hcl
 	FailOn        string `json:"fail_on,omitempty"`
 	OutputFile    string `json:"output_file,omitempty"`
 	PoCOutputFile string `json:"poc_output_file,omitempty"`

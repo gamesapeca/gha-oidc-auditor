@@ -32,7 +32,7 @@ func TestPipeline_LocalScanVulnerable(t *testing.T) {
 }
 
 func TestPipeline_MultiFormatExport(t *testing.T) {
-	formats := []string{"console", "json", "sarif", "markdown", "hcl"}
+	formats := []string{"console", "json", "jsonl", "ndjson", "sarif", "markdown", "hcl"}
 
 	for _, fmtName := range formats {
 		t.Run("Format_"+fmtName, func(t *testing.T) {
@@ -60,6 +60,17 @@ func TestPipeline_MultiFormatExport(t *testing.T) {
 				}
 				if _, ok := js["audit_report"]; !ok {
 					t.Errorf("Expected 'audit_report' key in JSON output")
+				}
+			case "jsonl", "ndjson":
+				lines := strings.Split(strings.TrimSpace(res.FormattedOutput), "\n")
+				if len(lines) == 0 {
+					t.Fatalf("Expected non-empty NDJSON lines for format %s", fmtName)
+				}
+				for idx, l := range lines {
+					var raw map[string]interface{}
+					if err := json.Unmarshal([]byte(l), &raw); err != nil {
+						t.Fatalf("Line %d failed to parse as JSON: %v. Content: %s", idx, err, l)
+					}
 				}
 			case "sarif":
 				var sarifDoc report.SARIFReport

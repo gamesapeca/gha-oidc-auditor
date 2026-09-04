@@ -166,3 +166,14 @@ func TestExecuteWithRetry_NilEmbeddedHTTPResponse(t *testing.T) {
 		t.Fatalf("expected error, got nil")
 	}
 }
+
+func TestFetchOrgWorkflowsConcurrently_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel upfront
+
+	f := fetcher.NewGitHubFetcher("")
+	_, err := f.FetchOrgWorkflowsConcurrently(ctx, "test-org", 4)
+	if err == nil {
+		t.Fatalf("expected context cancellation error, got nil")
+	}
+}

@@ -160,7 +160,7 @@ func (p *Pipeline) ResolveWorkflows(ctx context.Context) ([]*parser.Workflow, st
 
 	case p.cfg.Org != "":
 		ghFetcher := fetcher.NewGitHubFetcher(token)
-		orgWorkflows, err := ghFetcher.FetchOrgWorkflows(ctx, p.cfg.Org)
+		orgWorkflows, err := ghFetcher.FetchOrgWorkflowsConcurrently(ctx, p.cfg.Org, p.cfg.Concurrency)
 		if err != nil {
 			return nil, p.cfg.Org, fmt.Errorf("error querying GitHub API for org %s: %w", p.cfg.Org, err)
 		}
@@ -293,6 +293,9 @@ func (p *Pipeline) FormatReport(auditReport *analyzer.AuditReport, policies, hcl
 	case "json":
 		return report.ExportFullJSON(auditReport, policies, hcl, target, durationMs)
 
+	case "jsonl", "ndjson":
+		return report.ExportJSONLines(auditReport, target)
+
 	case "sarif":
 		return report.ExportSARIF(auditReport)
 
@@ -351,7 +354,7 @@ func (p *Pipeline) verifyCloudPolicy() (*RunResult, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("=== Cloud Trust Policy Audit (%s) ===\n", res.Provider))
+	sb.WriteString(fmt.Sprintf("Cloud Trust Policy Audit (%s)\n", res.Provider))
 	statusText := "OVERPRIVILEGED / INVALID"
 	if res.Valid {
 		statusText = "VALID (Least-Privilege Compliant)"

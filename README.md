@@ -145,20 +145,29 @@ make build
 ```
 
 
-## Usage
+## CLI Usage & Modular Subcommands
+
+`gha-oidc-auditor` can be executed directly using flags, or via dedicated, decoupled subcommands for specific automated pipelines:
+
+* `gha-oidc scan`: Audit local or remote workflows with parallel execution.
+* `gha-oidc policy verify`: Offline CIEM evaluation of existing cloud trust policies.
+* `gha-oidc policy generate`: Synthesize minimal-privilege cloud trust policies.
+* `gha-oidc hcl generate`: Generate Remediation-as-Code Terraform / OpenTofu modules.
 
 ### Local Workflow Audit
 
 Scan all workflows in `.github/workflows`:
 
 ```bash
+gha-oidc scan --path .github/workflows
+# Or direct execution:
 gha-oidc --path .github/workflows
 ```
 
 Scan a single workflow file:
 
 ```bash
-gha-oidc --path .github/workflows/deploy.yml
+gha-oidc scan --path .github/workflows/deploy.yml
 ```
 
 ### Remote Repository Audit
@@ -166,15 +175,30 @@ gha-oidc --path .github/workflows/deploy.yml
 Audit a remote repository using the GitHub API:
 
 ```bash
-gha-oidc --repo owner/repo --token $GITHUB_TOKEN
+gha-oidc scan --repo owner/repo --token $GITHUB_TOKEN
 ```
 
-### Organization-Wide Scan
+### Organization-Wide Scan (High-Concurrency)
 
-Scan all active repositories in an organization:
+Scan all active repositories in an organization concurrently across CPU cores:
 
 ```bash
-gha-oidc --org my-org --token $GITHUB_TOKEN --format markdown --output audit-report.md
+gha-oidc scan --org my-org --token $GITHUB_TOKEN --concurrency 8 --format markdown --output audit-report.md
+```
+
+### Enterprise Machine-Readable Output (JSON, NDJSON/JSONL, SARIF)
+
+`gha-oidc-auditor` supports multiple machine-readable formats for enterprise web dashboards, SIEM/SOAR platforms, data lakes, and GitHub Code Scanning:
+
+```bash
+# Full structured JSON tree (includes metadata, metrics, policies, and HCL)
+gha-oidc scan --path .github/workflows --format json --output report.json
+
+# Streaming Newline-Delimited JSON (NDJSON / JSONL) for Kafka, ELK, Splunk, BigQuery ingestion
+gha-oidc scan --path .github/workflows --format jsonl --output events.ndjson
+
+# OASIS SARIF v2.1.0 for GitHub Code Scanning / Security tab
+gha-oidc scan --path .github/workflows --format sarif --output results.sarif
 ```
 
 ### Bug Bounty Mode & PoC Generation
@@ -182,13 +206,13 @@ gha-oidc --org my-org --token $GITHUB_TOKEN --format markdown --output audit-rep
 Filter scan results exclusively for exploitable zero-prerequisite attack chains:
 
 ```bash
-gha-oidc --repo target-org/target-repo --token $GITHUB_TOKEN --bounty-mode
+gha-oidc scan --repo target-org/target-repo --token $GITHUB_TOKEN --bounty-mode
 ```
 
 Generate a submission-ready Bug Bounty Proof of Concept report:
 
 ```bash
-gha-oidc --repo target-org/target-repo --token $GITHUB_TOKEN --generate-poc --poc-output report.md
+gha-oidc scan --repo target-org/target-repo --token $GITHUB_TOKEN --generate-poc --poc-output report.md
 ```
 
 ### Least-Privilege Trust Policy Generation
@@ -196,7 +220,7 @@ gha-oidc --repo target-org/target-repo --token $GITHUB_TOKEN --generate-poc --po
 Generate scoped trust policies for AWS, GCP, or Azure based on detected workflow triggers and environments:
 
 ```bash
-gha-oidc --path .github/workflows --generate-policies
+gha-oidc policy generate --path .github/workflows
 ```
 
 Example generated AWS IAM Trust Policy:
@@ -228,10 +252,10 @@ Synthesize production-ready Terraform / OpenTofu `.tf` files directly for AWS IA
 
 ```bash
 # Output Terraform HCL to stdout
-gha-oidc --path .github/workflows --generate-hcl --format hcl
+gha-oidc hcl generate --path .github/workflows --format hcl
 
 # Write modular .tf files to infrastructure directory
-gha-oidc --path .github/workflows --generate-hcl --hcl-output ./terraform/modules/gha_oidc
+gha-oidc hcl generate --path .github/workflows --hcl-output ./terraform/modules/gha_oidc
 ```
 
 Example generated AWS IAM Terraform HCL module (with July 2026 immutable numeric IDs):
@@ -359,7 +383,7 @@ jobs:
 | `--repo` | `-r` | `""` | Remote GitHub repository (`owner/repo`) |
 | `--org` | `-o` | `""` | GitHub organization name |
 | `--token` | `-t` | `$GITHUB_TOKEN` | GitHub API Personal Access Token |
-| `--format` | `-f` | `console` | Output format (`console`, `json`, `sarif`, `markdown`, `hcl`) |
+| `--format` | `-f` | `console` | Output format (`console`, `json`, `jsonl`, `ndjson`, `sarif`, `markdown`, `hcl`) |
 | `--concurrency` | `-c` | `runtime.NumCPU()` | Parallel workers for multi-workflow / multi-repo analysis |
 | `--fail-on` | | `critical` | Exit threshold (`critical`, `high`, `medium`, `all`, `none`) |
 | `--generate-policies` | | `false` | Synthesize least-privilege cloud trust policies (JSON) |
