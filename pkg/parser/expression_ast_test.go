@@ -58,6 +58,11 @@ func TestExpressionParser_ASTConstruction(t *testing.T) {
 			expr:     "!github.event.issue.locked && github.actor == 'maintainer'",
 			expected: "(!github.event.issue.locked && (github.actor == 'maintainer'))",
 		},
+		{
+			name:     "Wildcard Object Collection Filter",
+			expr:     "contains(github.event.pull_request.labels.*.name, 'safe-to-test')",
+			expected: "contains(github.event.pull_request.labels.*.name, 'safe-to-test')",
+		},
 	}
 
 	for _, tc := range tests {
@@ -90,6 +95,17 @@ func TestResolveContextPath_CanonicalEquivalence(t *testing.T) {
 		if !ok || path != "github.event.issue.title" {
 			t.Errorf("Expected canonical path 'github.event.issue.title', got %q (ok=%v) for input %q", path, ok, v)
 		}
+	}
+
+	// Verify wildcard collection filter canonical path
+	wildcardExpr := "github.event.pull_request.labels.*.name"
+	node, err := parser.ParseExpression(wildcardExpr)
+	if err != nil {
+		t.Fatalf("Failed to parse wildcard filter %q: %v", wildcardExpr, err)
+	}
+	path, ok := parser.ResolveContextPath(node)
+	if !ok || path != "github.event.pull_request.labels.*.name" {
+		t.Errorf("Expected canonical path 'github.event.pull_request.labels.*.name', got %q (ok=%v)", path, ok)
 	}
 }
 

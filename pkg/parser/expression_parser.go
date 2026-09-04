@@ -142,6 +142,10 @@ func (p *ExpressionParser) parsePrefix() (Node, error) {
 		}
 		return nil, fmt.Errorf("unexpected prefix operator %q at position %d", tok.Literal, tok.Pos)
 
+	case TokenStar:
+		_ = p.nextToken()
+		return &IdentifierNode{Name: "*"}, nil
+
 	case TokenLParen:
 		_ = p.nextToken()
 		expr, err := p.parseExpression(precLowest)
@@ -161,6 +165,11 @@ func (p *ExpressionParser) parsePrefix() (Node, error) {
 
 func (p *ExpressionParser) parseMemberAccess(target Node) (Node, error) {
 	_ = p.nextToken() // consume '.'
+
+	if p.curTok.Type == TokenStar {
+		_ = p.nextToken() // consume '*'
+		return &MemberAccessNode{Target: target, Property: "*"}, nil
+	}
 
 	if p.curTok.Type != TokenIdent {
 		return nil, fmt.Errorf("expected property identifier after '.' at position %d, got %s", p.curTok.Pos, p.curTok.Literal)
@@ -270,6 +279,8 @@ func tokenTypeName(t TokenType) string {
 		return "Comma"
 	case TokenOp:
 		return "Operator"
+	case TokenStar:
+		return "Star"
 	default:
 		return "Unknown"
 	}

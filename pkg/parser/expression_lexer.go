@@ -23,6 +23,7 @@ const (
 	TokenRParen
 	TokenComma
 	TokenOp
+	TokenStar
 )
 
 // Token represents a lexical token with its position and raw string value.
@@ -143,6 +144,9 @@ func (l *Lexer) NextToken() (Token, error) {
 		return Token{Type: TokenOp, Literal: ">", Pos: startPos}, nil
 	case '\'':
 		return l.readString(startPos)
+	case '*':
+		l.readChar()
+		return Token{Type: TokenStar, Literal: "*", Pos: startPos}, nil
 	default:
 		if isDigit(l.ch) {
 			return l.readNumber(startPos)
