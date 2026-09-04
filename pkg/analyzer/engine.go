@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 
@@ -23,7 +24,7 @@ func NewDefaultEngine() *Engine {
 	return &Engine{registry: NewDefaultRegistry()}
 }
 
-// AnalyzeWorkflow audits a single workflow and returns all detected findings.
+// AnalyzeWorkflow executes all registered security rules against a single workflow.
 func (e *Engine) AnalyzeWorkflow(wf *parser.Workflow) []Finding {
 	if wf == nil {
 		return nil
@@ -69,15 +70,38 @@ func (e *Engine) AnalyzeWorkflowsConcurrently(ctx context.Context, targetName st
 					if !ok {
 						return
 					}
-					wf := wfs[idx]
-					if wf != nil {
-						findings := e.AnalyzeWorkflow(wf)
-						chains := DetectExploitChains(wf)
-						results[idx] = workflowResult{
-							findings: findings,
-							chains:   chains,
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								wfPath := ""
+								if idx < len(wfs) && wfs[idx] != nil {
+									wfPath = wfs[idx].Path
+								}
+								results[idx] = workflowResult{
+									findings: []Finding{
+										{
+											RuleID:       "PANIC-RECOVERED",
+											Title:        "Workflow Analysis Panic Recovered",
+											Category:     "Engine Reliability",
+											Severity:     SeverityLow,
+											WorkflowPath: wfPath,
+											Description:  fmt.Sprintf("Internal panic recovered during workflow analysis: %v", r),
+										},
+									},
+								}
+							}
+						}()
+
+						wf := wfs[idx]
+						if wf != nil {
+							findings := e.AnalyzeWorkflow(wf)
+							chains := DetectExploitChains(wf)
+							results[idx] = workflowResult{
+								findings: findings,
+								chains:   chains,
+							}
 						}
-					}
+					}()
 				}
 			}
 		}()

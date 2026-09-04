@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -60,23 +59,66 @@ var UntrustedContexts = []string{
 	"inputs.",
 }
 
-var (
-	// ExprRegex is preserved for backwards compatibility with external callers.
-	ExprRegex = regexp.MustCompile(`\$\{\{((?s:.)*?)\}\}`)
-
-	// bracketIndexRegex matches ['property'] or ["property"] index expressions
-	bracketIndexRegex = regexp.MustCompile(`\[\s*['"]([a-zA-Z0-9_\-]+)['"]\s*\]`)
-
-	// dotSpaceRegex normalizes spaces around dots (e.g. "github . event" -> "github.event")
-	dotSpaceRegex = regexp.MustCompile(`\s*\.\s*`)
-)
-
 // NormalizeExpression transforms expressions into canonical dot-notation for invariant matching.
+// Converts bracket indexing (e.g. ['foo'] or ["foo"]) to .foo and normalizes whitespace around dots.
 func NormalizeExpression(expr string) string {
-	normalized := strings.ToLower(expr)
-	normalized = bracketIndexRegex.ReplaceAllString(normalized, ".$1")
-	normalized = dotSpaceRegex.ReplaceAllString(normalized, ".")
-	return normalized
+	s := strings.ToLower(expr)
+	var b strings.Builder
+	b.Grow(len(s))
+	n := len(s)
+	for i := 0; i < n; {
+		if s[i] == '[' {
+			j := i + 1
+			for j < n && (s[j] == ' ' || s[j] == '\t') {
+				j++
+			}
+			if j < n && (s[j] == '\'' || s[j] == '"') {
+				quote := s[j]
+				j++
+				start := j
+				for j < n && s[j] != quote {
+					j++
+				}
+				if j < n && s[j] == quote {
+					prop := s[start:j]
+					j++
+					for j < n && (s[j] == ' ' || s[j] == '\t') {
+						j++
+					}
+					if j < n && s[j] == ']' {
+						if b.Len() > 0 && !strings.HasSuffix(b.String(), ".") {
+							b.WriteByte('.')
+						}
+						b.WriteString(prop)
+						i = j + 1
+						continue
+					}
+				}
+			}
+		}
+
+		if s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n' {
+			k := i + 1
+			for k < n && (s[k] == ' ' || s[k] == '\t' || s[k] == '\r' || s[k] == '\n') {
+				k++
+			}
+			if k < n && s[k] == '.' {
+				i = k
+				continue
+			}
+			if b.Len() > 0 && strings.HasSuffix(b.String(), ".") {
+				i++
+				continue
+			}
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 // ContainsUntrustedContext checks whether a shell run block contains inline untrusted context interpolation.

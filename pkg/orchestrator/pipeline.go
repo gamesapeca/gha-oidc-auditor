@@ -91,10 +91,14 @@ func (p *Pipeline) Run(ctx context.Context) (*RunResult, error) {
 	if p.cfg.GenerateHCL || strings.ToLower(p.cfg.Format) == "hcl" {
 		hclModules = p.SynthesizeHCL(wfs)
 		if p.cfg.HCLOutputDir != "" {
-			_ = os.MkdirAll(p.cfg.HCLOutputDir, 0755)
+			if err := os.MkdirAll(p.cfg.HCLOutputDir, 0755); err != nil {
+				return nil, fmt.Errorf("failed to create HCL output directory %s: %w", p.cfg.HCLOutputDir, err)
+			}
 			for fname, content := range hclModules {
-				dest := filepath.Join(p.cfg.HCLOutputDir, fname)
-				_ = os.WriteFile(dest, []byte(content), 0644)
+				dest := filepath.Join(p.cfg.HCLOutputDir, filepath.Base(fname))
+				if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+					return nil, fmt.Errorf("failed writing HCL module %s: %w", fname, err)
+				}
 			}
 		}
 	}
@@ -187,6 +191,25 @@ func (p *Pipeline) AnalyzeWorkflows(ctx context.Context, targetName string, wfs 
 	return p.engine.AnalyzeWorkflowsConcurrently(ctx, targetName, wfs, p.cfg.Concurrency)
 }
 
+// sanitizeFilename strips illegal characters and path separators from workflow and job identifiers.
+func sanitizeFilename(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	res := strings.Trim(b.String(), "._- ")
+	if res == "" {
+		return "artifact"
+	}
+	return res
+}
+
 // SynthesizePolicies generates least-privilege cloud trust policies for all OIDC-privileged jobs.
 func (p *Pipeline) SynthesizePolicies(wfs []*parser.Workflow) map[string]string {
 	policies := make(map[string]string)
@@ -207,29 +230,32 @@ func (p *Pipeline) SynthesizePolicies(wfs []*parser.Workflow) map[string]string 
 					continue
 				}
 
+				wfBase := sanitizeFilename(wf.Name)
+				jobBase := sanitizeFilename(jobName)
+
 				switch match.Provider {
 				case analyzer.ProviderAWS:
 					policy, err := remediation.GenerateAWSTrustPolicy("123456789012", owner, repo, wf, &job)
 					if err == nil {
-						key := fmt.Sprintf("%s_%s_AWS_TrustPolicy.json", wf.Name, jobName)
+						key := fmt.Sprintf("%s_%s_AWS_TrustPolicy.json", wfBase, jobBase)
 						policies[key] = policy
 					}
 				case analyzer.ProviderGCP:
 					policy, err := remediation.GenerateGCPWorkloadIdentityAssertion("123456789012", "pool-id", "github-provider", owner, repo, wf, &job)
 					if err == nil {
-						key := fmt.Sprintf("%s_%s_GCP_WIF.json", wf.Name, jobName)
+						key := fmt.Sprintf("%s_%s_GCP_WIF.json", wfBase, jobBase)
 						policies[key] = policy
 					}
 				case analyzer.ProviderAzure:
 					policy, err := remediation.GenerateAzureFederatedCredential(owner, repo, wf, &job)
 					if err == nil {
-						key := fmt.Sprintf("%s_%s_Azure_Federation.json", wf.Name, jobName)
+						key := fmt.Sprintf("%s_%s_Azure_Federation.json", wfBase, jobBase)
 						policies[key] = policy
 					}
 				case analyzer.ProviderVault:
 					policy, err := remediation.GenerateVaultJWTRole(owner, repo, "deployer-role", wf, &job)
 					if err == nil {
-						key := fmt.Sprintf("%s_%s_Vault_JWTRole.json", wf.Name, jobName)
+						key := fmt.Sprintf("%s_%s_Vault_JWTRole.json", wfBase, jobBase)
 						policies[key] = policy
 					}
 				}
@@ -261,25 +287,30 @@ func (p *Pipeline) SynthesizeHCL(wfs []*parser.Workflow) map[string]string {
 				}
 				matchedAny = true
 
+				wfBase := sanitizeFilename(wf.Name)
+				jobBase := sanitizeFilename(jobName)
+
 				switch match.Provider {
 				case analyzer.ProviderAWS:
 					hcl := remediation.GenerateAWSTerraformHCL("123456789012", owner, repo, wf, &job)
-					key := fmt.Sprintf("%s_%s_aws_oidc.tf", wf.Name, jobName)
+					key := fmt.Sprintf("%s_%s_aws_oidc.tf", wfBase, jobBase)
 					hclModules[key] = hcl
 				case analyzer.ProviderGCP:
 					hcl := remediation.GenerateGCPTerraformHCL("projects/123/locations/global/workloadIdentityPools/gha-pool", owner, repo, wf, &job)
-					key := fmt.Sprintf("%s_%s_gcp_wif.tf", wf.Name, jobName)
+					key := fmt.Sprintf("%s_%s_gcp_wif.tf", wfBase, jobBase)
 					hclModules[key] = hcl
 				case analyzer.ProviderAzure:
 					hcl := remediation.GenerateAzureTerraformHCL("${azuread_application.gha_app.object_id}", owner, repo, wf, &job)
-					key := fmt.Sprintf("%s_%s_azure_federation.tf", wf.Name, jobName)
+					key := fmt.Sprintf("%s_%s_azure_federation.tf", wfBase, jobBase)
 					hclModules[key] = hcl
 				}
 			}
 
 			if !matchedAny {
+				wfBase := sanitizeFilename(wf.Name)
+				jobBase := sanitizeFilename(jobName)
 				hcl := remediation.GenerateAWSTerraformHCL("123456789012", owner, repo, wf, &job)
-				key := fmt.Sprintf("%s_%s_aws_oidc.tf", wf.Name, jobName)
+				key := fmt.Sprintf("%s_%s_aws_oidc.tf", wfBase, jobBase)
 				hclModules[key] = hcl
 			}
 		}
