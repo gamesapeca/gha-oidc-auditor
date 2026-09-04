@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"sync"
 	"time"
 )
 
@@ -69,6 +70,7 @@ type Finding struct {
 
 // AuditReport aggregates scan results, findings, and summary statistics.
 type AuditReport struct {
+	mu            sync.Mutex
 	TargetRepo    string           `json:"target_repo"`
 	ScanTime      time.Time        `json:"scan_time"`
 	WorkflowsNum  int              `json:"workflows_scanned"`
@@ -94,14 +96,17 @@ func NewAuditReport(target string) *AuditReport {
 	}
 }
 
-// AddFinding appends a finding to the report and updates summary metrics.
+// AddFinding appends a finding to the report and updates summary metrics in a thread-safe manner.
 func (r *AuditReport) AddFinding(f Finding) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.Findings = append(r.Findings, f)
 	r.Summary[f.Severity]++
 }
 
-// AddExploitChain appends an exploitable attack chain to the report.
-func (r *AuditReport) AddExploitChain(ec ExploitChain) {
-	r.ExploitChains = append(r.ExploitChains, ec)
+// AddExploitChain appends an exploit chain to the report in a thread-safe manner.
+func (r *AuditReport) AddExploitChain(chain ExploitChain) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ExploitChains = append(r.ExploitChains, chain)
 }
-
